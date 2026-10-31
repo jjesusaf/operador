@@ -75,6 +75,11 @@ export class OperatorContainer extends Container<Env> {
     return task_id;
   }
 
+  /** Raw passthrough of a GET to the container (used for run artifacts). */
+  async proxy(path: string, authorization: string): Promise<Response> {
+    return this.containerFetch(`http://container${path}`, { headers: { Authorization: authorization } }, PORT);
+  }
+
   async liveStatus(containerTaskId: string, authorization: string): Promise<TaskStatusResponse | null> {
     const res = await this.containerFetch(`http://container/tasks/${containerTaskId}`, { headers: { Authorization: authorization } }, PORT);
     return res.ok ? (await res.json() as TaskStatusResponse) : null;
@@ -182,6 +187,14 @@ app.put("/internal/notes/:fingerprint", async (c) => {
 });
 
 app.get("/internal/container/health", async (c) => c.json(await getContainer(c.env.OPERATOR).apiHealth()));
+/** Proxy run artifacts (log, screenshots) straight from the container; the ledger maps our id → container id. */
+app.get("/internal/runs/:id/*", async (c) => {
+  const id = c.req.param("id");
+  const row = await c.env.DB.prepare("SELECT container_task_id FROM tasks WHERE id = ?").bind(id).first<{ container_task_id: string | null }>();
+  const containerId = row?.container_task_id ?? id; // accept container ids too
+  const rest = c.req.path.replace(`/internal/runs/${id}`, "");
+  return getContainer(c.env.OPERATOR).proxy(`/internal/runs/${containerId}${rest}`, c.get("authorization"));
+});
 app.post("/internal/container/restart", async (c) => c.json({ container: await getContainer(c.env.OPERATOR).restart() }));
 
 app.get("/internal/tasks", async (c) => {

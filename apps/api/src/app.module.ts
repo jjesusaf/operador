@@ -5,9 +5,10 @@ import { TasksService } from "./tasks/tasks.service.js";
 import { TasksRepository } from "./tasks/tasks.repository.js";
 import { BearerGuard } from "./auth/bearer.guard.js";
 import { ConfigService } from "./config.service.js";
+import { RunsController } from "./runs/runs.controller.js";
 
 @Module({
-  controllers: [HealthController, TasksController],
+  controllers: [HealthController, TasksController, RunsController],
   providers: [ConfigService, TasksRepository, TasksService, BearerGuard],
 })
 export class AppModule {}

@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runTask(o: RunOptions): Promise<RunResult> {
   const t0 = Date.now();
-  const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 40, maxCost = o.maxCostUsd ?? 1.0, keep = o.keepScreenshots ?? 3;
+  const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 60, maxCost = o.maxCostUsd ?? 1.5, keep = o.keepScreenshots ?? 3;
   const logDir = o.logDir ?? `runs/${new Date().toISOString().replace(/[:.]/g, "-")}`;
   mkdirSync(logDir, { recursive: true });
   const log = (entry: Record<string, unknown>) => appendFileSync(`${logDir}/log.jsonl`, JSON.stringify({ t: Date.now() - t0, ...entry }) + "\n");
@@ -70,10 +70,27 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
     messages.push({ role: "user", content: [{ type: "text", text: `Tarea: ${o.task}${notesBlock}\n\nThis is the current screen.` }, image(shot.png)] });
     let nudges = 0;
 
+    /** When a hard limit stops the loop, ask for a short final summary so the report still names what was found. */
+    const finishOnLimit = async (reason: string, fallback: string): Promise<RunResult> => {
+      await desktop?.close(); // stop touching the desktop first
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12_000);
+        const tail = messages.filter((m) => m.role !== "system").slice(-6).map((m) => (m.role === "user" && typeof m.content !== "string") ? { ...m, content: m.content.filter((p) => p.type === "text") } : m);
+        const reply = await chat([
+          { role: "system", content: "You are the same operator. The task was stopped by a hard limit. Write the final report in Spanish, 2-4 sentences: what you managed to find or do (name concrete data: ids, names, dates, references), what was pending, and that no further changes were made. No 'respuesta:' line unless you are certain of the answer. Never include passwords, tokens or URLs." },
+          ...tail,
+          { role: "user", content: `Stopped: ${reason}. Write the final report now.` },
+        ], { ...o.model, maxTokens: 400 }, ctrl.signal, { withTools: false });
+        clearTimeout(t); cost += reply.cost;
+        if (reply.text.trim()) return finish("failed", reply.text.trim(), reason);
+      } catch (e: any) { log({ finalSummaryError: String(e?.message ?? e) }); }
+      return finish("failed", fallback, reason);
+    };
+
     while (true) {
-      if (abort.signal.aborted) return finish("failed", "No se completó la tarea dentro del tiempo límite; no se hicieron cambios adicionales.", "deadline");
-      if (steps >= maxSteps) return finish("failed", "Se alcanzó el límite de pasos sin terminar la tarea.", "max_steps");
-      if (cost >= maxCost) return finish("failed", "Se alcanzó el límite de presupuesto sin terminar la tarea.", "max_cost");
+      if (abort.signal.aborted) return finishOnLimit("deadline", "No se completó la tarea dentro del tiempo límite; no se hicieron cambios adicionales.");
+      if (steps >= maxSteps) return finishOnLimit("max_steps", "Se alcanzó el límite de pasos sin terminar la tarea.");
+      if (cost >= maxCost) return finishOnLimit("max_cost", "Se alcanzó el límite de presupuesto sin terminar la tarea.");
       steps++;
 
       pruneImages(messages, keep);
@@ -116,7 +133,10 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
         writeFileSync(`${logDir}/step-${String(steps).padStart(2, "0")}.png`, shot.png);
         const left = Math.max(0, Math.round((deadlineMs - (Date.now() - t0)) / 1000));
         const note = lastWasAction && !shot.changed ? " The screen did NOT change after your last action: do not repeat it blindly." : "";
-        messages.push({ role: "user", content: [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}` }, image(shot.png)] });
+        const budget = steps >= maxSteps - 25 || left <= 75
+          ? ` Budget warning: ${maxSteps - steps} turns and ${left}s left. If you are not clearly making progress, verify what you have done and call report (status "failed" if the task is not complete, naming what you found).`
+          : "";
+        messages.push({ role: "user", content: [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}${budget}` }, image(shot.png)] });
       }
     }
   } catch (e: any) {

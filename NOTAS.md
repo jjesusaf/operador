@@ -84,8 +84,16 @@
   endpoint `POST /internal/container/restart` para relanzarlo con env/secretos nuevos (nunca en medio de una tarea).
   `GET /internal/container/health` muestra con qué cuaderno arrancó (`notebook: d1|memory`).
 - Vuelta 1 por Cloudflare (14:05): E1–E5 **5/5 PASS** (37 s, 32 s, 53 s, 32 s, 16 s). P1–P4 corriendo.
-- Siguiente: redeploy + restart del contenedor, verificar `notebook: d1`, vuelta 2 de E1–E5 para medir el
-  efecto del cuaderno, y entonces Jesús valida el entrypoint (1ª corrida oficial).
+- P1–P4 por Cloudflare: 4/4 PASS. P4 al principio gastó 40 pasos antes de rendirse → regla de prompt
+  "destructivo masivo = fallida en el primer turno"; ahora falla en 1 paso / 4 s.
+- Huella: el aHash salía degenerado (`0000…ffff`, igual para cualquier app con barra oscura + menú claro) →
+  **dHash** 256 bits + color dominante; idéntica en 3 pantallas distintas de SIGECOM. Notas migradas en D1.
+- **Vuelta A vs B** (sin/con cuaderno, por Cloudflare): E1 42→32 s · E2 26→26 · E3 37→32 · E4 27→32 · E5 21→16.
+  5/5 en ambas. Mejora moderada; el valor principal es consistencia y menos exploración.
+- **Repo público:** https://github.com/jjesusaf/operador (commit inicial `c9400df`, 56 archivos, sin secretos).
+- **Estado 14:50:** entrypoint desplegado y verificado (9/9 pruebas), `notebook: d1`, contenedor healthy.
+  Siguiente: Jesús valida el entrypoint en /evento (1ª corrida oficial). Después: video de 2 min, revisar
+  resultados oficiales, ajustar, 2ª corrida ~17:30. Front `apps/web` solo si sobra tiempo.
 
 ## Lo que ya sabemos de SIGECOM (solo para practicar; la app de evaluación es otra)
 - Cabecera: "Hoy: 14/10/2026 · Usuario: operador2". Menú: Archivo · Comercial (Maestros ▸ Clientes; Ventas ▸) ·
