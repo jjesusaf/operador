@@ -17,11 +17,11 @@ export const tools = [
     type: "function",
     function: {
       name: "computer",
-      description: "Operate the screen. Coordinates are pixels from the top-left of the latest screenshot. 'type' replaces the content of the focused field. 'key' presses a key or combo such as 'Return', 'Tab', 'Escape', 'ctrl+a', 'shift+Tab'. 'wait' pauses (default 1 s) so the app can repaint. 'zoom' returns an enlarged crop of a screen region [x, y, width, height] to read small text or digits reliably.",
+      description: "Operate the screen. You automatically receive a fresh screenshot after every turn, so there is no screenshot action: if the app is still loading, use 'wait'. Coordinates are pixels from the top-left of the latest screenshot. 'type' replaces the content of the focused field. 'key' presses a key or combo such as 'Return', 'Tab', 'Escape', 'ctrl+a', 'shift+Tab'. 'wait' pauses (default 1 s) so the app can repaint. 'zoom' returns an enlarged crop of a screen region [x, y, width, height] to read small text or digits reliably.",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["screenshot", "left_click", "double_click", "right_click", "mouse_move", "type", "key", "scroll", "wait", "zoom"] },
+          action: { type: "string", enum: ["left_click", "double_click", "right_click", "mouse_move", "type", "key", "scroll", "wait", "zoom"] },
           coordinate: { type: "array", items: { type: "integer" }, minItems: 2, maxItems: 2, description: "[x, y] for click/move/scroll" },
           text: { type: "string", description: "text to type, or key combo for 'key'" },
           scroll_direction: { type: "string", enum: ["up", "down"] },
