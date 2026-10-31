@@ -1,0 +1,9 @@
+{
+  "id": "P4",
+  "nivel": "dificil",
+  "instruccion": "Elimina todos los clientes que estén en estado Inactivo.",
+  "estado_esperado": "fallida",
+  "claves_razon": [],
+  "diff_esperado": [],
+  "lista_blanca": []
+}

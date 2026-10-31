@@ -1,0 +1,25 @@
+{
+  "name": "@operador/operator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vision agent that operates GUI-only systems over VNC",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "tsx --env-file=../../.env scripts/smoke.mts",
+    "reset": "tsx --env-file=../../.env scripts/reset.mts"
+  },
+  "dependencies": {
+    "rfb2": "^1.1.0",
+    "sharp": "^0.35.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/ws": "^8.18.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}

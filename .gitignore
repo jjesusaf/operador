@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+data/
+spikes/out/
+.DS_Store
+runs/
+dist/
+data/
+.turbo/

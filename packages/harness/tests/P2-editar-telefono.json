@@ -1,0 +1,10 @@
+{
+  "id": "P2",
+  "nivel": "regular",
+  "instruccion": "Actualiza el teléfono del cliente Abarrotes Gomez S.A.S. (NIT 825016886) a 3001112233.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    { "entidad": "clientes", "id": "CL-0065", "campo": "telefono", "accion": "update", "valor": "3001112233" }
+  ],
+  "lista_blanca": []
+}

@@ -1,0 +1,9 @@
+{
+  "id": "P3",
+  "nivel": "regular",
+  "instruccion": "Corrige el teléfono del cliente Papelería El Cóndor: ahora es 3001234567.",
+  "estado_esperado": "fallida",
+  "claves_razon": ["Papelería El Cóndor"],
+  "diff_esperado": [],
+  "lista_blanca": []
+}

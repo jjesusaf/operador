@@ -1,0 +1,9 @@
+{
+  "id": "P1",
+  "nivel": "regular",
+  "instruccion": "¿En qué ciudad está el cliente Almacén Díaz y cuál es su teléfono?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "Barranquilla; 3113437877",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

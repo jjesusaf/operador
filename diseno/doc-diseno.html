@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Operador — doc de diseño</title>
+<style>
+@page { size: Letter; margin: 6mm 7mm; }
+body{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:7.4pt;line-height:1.24;color:#1d2433;margin:0}
+h1{font-size:12.5pt;margin:0 0 1px}
+.sub{color:#5b6478;font-size:7.4pt;margin-bottom:4px}
+h2{font-size:8.6pt;margin:5px 0 2px;color:#4b32b8;border-bottom:1px solid #d9d3f5;padding-bottom:1px}
+p{margin:0 0 2.5px}
+ul{margin:0 0 2.5px;padding-left:12px} li{margin:0 0 1px}
+.cols{column-count:2;column-gap:13px}
+.cols>section{break-inside:avoid-column}
+table{border-collapse:collapse;width:100%;margin:1px 0 3px}
+td,th{border:1px solid #d6dae3;padding:1.3px 3.5px;vertical-align:top;text-align:left}
+th{background:#f1f3f7;font-weight:700}
+code{font-family:Menlo,monospace;font-size:7pt;background:#f1f3f7;padding:0 2px;border-radius:2px}
+b{font-weight:700}
+</style></head><body>
+<h1>Operador — agente que opera sistemas sin API, solo por pantalla</h1>
+<div class="sub">Reto 2 · Frontier CDMX · 31 oct 2026 · Jesús Acevedo · Diagrama de arquitectura adjunto (C4 nivel 2 + zoom al worker) · v2 tras revisión independiente</div>
+
+<div class="cols">
+<section>
+<h2>1 · Problema, supuestos y casos difíciles</h2>
+<p><b>Entrada:</b> tarea en español + escritorio (<code>wss://…/websockify</code> + contraseña). Solo vemos <b>pixeles 1280×800 por VNC</b>: sin DOM, sin API, sin red hacia fuera. <b>Salida:</b> la app con los cambios pedidos (más los tolerados en <code>lista_blanca</code>), <code>estado</code> honesto y <code>resumen</code> con formato. Se evalúa en una <b>app no vista</b>, escritorio limpio y distinto por tarea, 5 min por tarea, todo‑o‑nada.</p>
+<p><b>Reglas del contrato que gobiernan el reporte:</b> pregunta → una sola línea <code>respuesta: &lt;valor&gt;</code> con el número primero; dos datos → <code>respuesta: d1; d2</code> en el orden preguntado; pregunta no respondible → <code>fallida</code> <b>sin</b> línea <code>respuesta:</code>; tarea imposible/peligrosa → <code>fallida</code> nombrando los datos; cualquier secreto en el resumen anula la tarea; operar tras reportar contamina la tarea siguiente.</p>
+<p><b>Supuestos (verificables en la app de pruebas):</b> apps web de gestión tipo CRUD en Chromium kiosko (Tab/Enter/Esc funcionan); la fecha "hoy" es visible en la pantalla principal (si no, la tarea con fechas relativas se reporta <code>fallida</code> diciendo por qué); texto ≥11 px legible por OCR; el evaluador manda tareas de forma secuencial (si llegan en paralelo, hasta 3 contextos simultáneos).</p>
+<p><b>Casos difíciles que el diseño ataca:</b></p>
+<ul>
+<li><b>Ambigüedad</b> (dos "Ana Torres") → no adivinar: <code>fallida</code> con ambas cédulas.</li>
+<li><b>Duplicados por repintado lento</b> (≤1 s): una captura temprana muestra la pantalla vieja y provoca un segundo "Guardar".</li>
+<li><b>Mañas de entrada:</b> clic &lt;100 ms se ignora; escribir sobre texto concatena; <b>tildes/ñ</b> no viajan por el teclado US de Playwright (hay que enviar keysyms RFB).</li>
+<li><b>Teclas peligrosas:</b> Ctrl+W, F5, Alt+F4 cierran o recargan el kiosko → lista negra.</li>
+<li><b>Preguntas con muchos datos</b> (45 facturas → paginación o filtros + total); <b>fechas</b> (E4: <code>&lt;input type=date&gt;</code> por segmentos, pickers) y fechas relativas desde el "hoy" de la app.</li>
+<li><b>Avisos, notas y modales</b> de confirmación que cambian qué es correcto.</li>
+<li><b>Tiempo:</b> cada paso cuesta 6–13 s (captura + modelo + repintado) → el tope de pasos se deriva del tiempo, no al revés.</li>
+</ul>
+<p><b>Fuera de alcance (a propósito):</b> memorizar SIGECOM (la evaluación usa otra app → sobreajuste); caché de "manuales" entre tareas (riesgo con apps que cambian en el día; se reorienta en cada tarea); velocidad máxima (un fallo honesto cuesta menos que un falso éxito).</p>
+</section>
+
+<section>
+<h2>2 · Arquitectura (ver diagrama)</h2>
+<ul>
+<li><b>API</b> (Node/TS, Fastify, Bearer): <code>POST /tasks</code> solo encola y responde &lt;2 s; <code>GET /tasks/{id}</code> → <code>en_curso|terminada|fallida</code> + resumen (<code>""</code> mientras corre). Estado <b>persistido en SQLite</b>: un reinicio del contenedor no da 404. <code>/health</code> responde 200 solo con Chromium lanzado y key cargada.</li>
+<li><b>Worker</b>: deadline = <code>recibido_en + 4:30</code> con abort duro (cancela la llamada al modelo y cierra la página). Fases: <b>Orientar</b> (primera captura; buscar "hoy" solo si la tarea trae fechas) → <b>Planear</b> (pasos + criterio de éxito; ¿ambigua/peligrosa? → fallar) → <b>Bucle</b> observar→decidir→guardias→actuar (≈20–25 pasos) → <b>Verificar</b> (releer el registro; en conteos, usar "1–20 de 45"/total del filtro; en exports, el aviso de descarga) → <b>Reportar</b> y desconectar VNC.</li>
+<li><b>Conector</b>: Chromium headless (Playwright) con <b>página propia mínima</b> que importa solo <code>core/rfb.js</code> de noVNC (cliente VNC, no agente): viewport exacto 1280×800, <code>deviceScaleFactor 1</code>, sin escalar/recortar; al conectar se <b>verifica</b> que el canvas mide 1280×800 en (0,0) → coordenadas 1:1. Captura = framebuffer del canvas. Clic = down‑200 ms‑up. <b>Texto = <code>rfb.sendKey(keysym)</code> por carácter</b> (tildes/ñ). <code>qualityLevel 9</code> para que el OCR lea dígitos. Lista negra de teclas.</li>
+<li><b>Percepción</b>: captura estable = diferencia &lt;0.2 % de pixeles entre dos cuadros (tolera el cursor parpadeante), máx 1.5 s. <b>OCR bajo demanda</b> como herramienta del modelo (<code>leer_texto</code>/<code>buscar_texto</code>: Tesseract.js, zoom ×2) para cifras exactas e ids; no en cada paso. Solo las 2–3 últimas capturas en el contexto.</li>
+<li><b>Cerebro</b>: Claude con visión y acciones estilo <i>computer use</i> (<code>screenshot·left_click·double_click·mouse_move·type·key·scroll·wait</code> + <code>terminar</code>/<code>fallar</code>). <b>Opción A (por defecto, verificada hoy):</b> API directa de Anthropic, <b>Claude Sonnet 5.5</b> con el toolset nativo <code>computer_toolset_20260801</code> (se declara sin medidas); en el spike devolvió <code>left_click [640,400]</code> + <code>screenshot</code> en un solo turno (agrupa acciones). Costo fijo ≈4.5k tokens de entrada por paso por el prompt interno del toolset → se mide. <b>Opción B (verificada):</b> OpenRouter con la key del evento y una <b>función común <code>computer</code></b> con el mismo esquema (Sonnet 4.5 respondió <code>left_click [640,400]</code>, US$0.003). OpenRouter <b>rechaza</b> la tool nativa (400). Misma interfaz interna; solo cambia el adaptador.</li>
+<li><b>Guardias en código</b> (no solo prompt): no repetir "Guardar" sin ver un cambio; tope de pasos, tiempo y $ por tarea; formato de <code>respuesta:</code> (una línea, número primero, se elimina si <code>fallida</code>); la contraseña nunca entra al prompt + filtro final de contraseña, host del wss y token.</li>
+</ul>
+</section>
+
+<section>
+<h2>3 · Decisiones y alternativas descartadas</h2>
+<table>
+<tr><th>Decisión</th><th>Descartamos</th><th>Por qué</th></tr>
+<tr><td>Visión + OCR bajo demanda</td><td>DOM; solo visión; OCR en cada paso</td><td>DOM no existe. Solo visión lee mal cifras. OCR en cada paso cuesta 1–3 s × paso.</td></tr>
+<tr><td>Playwright + <code>core/rfb.js</code> propio</td><td>vnc.html de noVNC; libs RFB de Node (<code>rfb2</code>); RFB a mano</td><td>vnc.html centra el canvas y pinta banners (coordenadas no 1:1). Libs Node sin mantenimiento ni wss. RFB a mano es riesgo alto en 1 día.</td></tr>
+<tr><td>Acciones estilo computer use</td><td>Formato JSON inventado</td><td>Claude está entrenado en ese vocabulario → mejores clics.</td></tr>
+<tr><td>API directa + toolset nativo (A)</td><td>OpenRouter + función común (B)</td><td>Formato en el que el modelo fue entrenado y agrupa acciones por turno; OpenRouter rechaza la tool nativa. B queda como adaptador alterno con la key del evento.</td></tr>
+<tr><td>Claude Sonnet 5.5</td><td>Opus 5.5 (lento/caro); Haiku 5.5 (peor en clics)</td><td>Equilibrio latencia/precisión; se mide en el arnés y se cambia si falla.</td></tr>
+<tr><td>Ciclo propio</td><td>Mastra/frameworks; servicios tipo Operator</td><td>Control de tiempo, pasos y costo. Los servicios que operan solos están prohibidos.</td></tr>
+<tr><td>Ante duda, fallar</td><td>Adivinar el más probable</td><td>Falso éxito y acción destructiva penalizan más que una fallida.</td></tr>
+<tr><td>Captura nativa 1280×800</td><td>Reducirla</td><td>1.02 MP está bajo el umbral en que la API reescala → mismo espacio de coordenadas; el costo lo manda el historial, no la imagen.</td></tr>
+<tr><td>SQLite + Railway (1 contenedor)</td><td>Estado en memoria; Fly</td><td>Sobrevive reinicios; Railway ya lo usamos hoy.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4 · Plan para medir (antes de gastar corridas oficiales)</h2>
+<p><b>Smoke tests del conector (primero):</b> teclear "Papelería Los Andes" y leerla en pantalla; canvas 1280×800 en (0,0); clic en una coordenada conocida; latencia por paso.</p>
+<p><b>Arnés local</b>, por caso: <code>POST /__reset</code> → <code>POST /tasks</code> (mide &lt;2 s) → consultar cada 5 s ≤5 min → <code>POST /__check</code> + chequeos propios que <code>__check</code> no ve: estado esperado, primer número de <code>respuesta:</code>, <code>claves_razon</code>, ausencia de secretos, <b>contador de acciones del conector tras el estado final = 0</b>.</p>
+<p><b>Casos:</b> E1–E5 + 6 propios (con su JSON e ids reales de SIGECOM): pregunta de 2 datos, fecha relativa, registro inexistente → fallida, modal de confirmación, export con rango de fechas, orden peligrosa → fallida.</p>
+<p><b>Arnés contra el defecto:</b> agente nulo que dice "terminada" (E1 y E5 deben dar ✗); E1 dos veces sin reset (duplicado ✗); resumen con la contraseña (✗).</p>
+<table>
+<tr><th>Métrica</th><th>Meta</th></tr>
+<tr><td>Éxito E1–E5 · casos propios</td><td>≥4/5 · ≥5/6</td></tr>
+<tr><td>Falsos éxitos · acciones destructivas · duplicados</td><td>0 · 0 · 0</td></tr>
+<tr><td>Latencia por paso p50/p95 · pasos por tarea · tiempo p95</td><td>medidos · ≤25 · &lt;4 min</td></tr>
+<tr><td>OCR en dígitos (ids E5, total E3) · POST /tasks</td><td>≥99 % · &lt;2 s</td></tr>
+<tr><td>Costo por tarea</td><td>medido; tope duro configurado</td></tr>
+</table>
+<p><b>Compuerta:</b> una corrida oficial solo cuando la versión <b>desplegada</b> cumple las metas. 1ª ~16:00, 2ª ~18:00, 3ª de reserva.</p>
+</section>
+
+<section>
+<h2>5 · Riesgos y mitigación</h2>
+<ul>
+<li>Modelo lento → acciones compuestas (Tab entre campos) y tope de pasos derivado del tiempo medido.</li>
+<li>Clics imprecisos → <code>buscar_texto</code> OCR para apuntar al control y verificación tras cada acción.</li>
+<li>La app cambia en el día → nada codificado; reorientación en cada tarea.</li>
+<li>Presupuesto (US$45) → tope por tarea y log de costo; capturas podadas del historial.</li>
+</ul>
+</section>
+</div>
+</body></html>

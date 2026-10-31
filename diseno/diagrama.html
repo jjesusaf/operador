@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Diagrama de arquitectura</title>
+<style>
+@page { size: 1500px 1000px; margin: 0; }
+svg{display:block} html,body{margin:0;background:#fff;overflow:hidden;font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;}
+text{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;fill:#1d2433}
+.t{font-size:15px;font-weight:700}
+.s{font-size:12.5px;fill:#3b4456}
+.m{font-size:12px;font-family:Menlo,monospace;fill:#3b4456}
+.h{font-size:22px;font-weight:800}
+.lbl{font-size:12px;fill:#5b6478;font-weight:600}
+</style></head><body>
+<svg width="1500" height="1000" viewBox="0 0 1500 1000" xmlns="http://www.w3.org/2000/svg">
+<defs>
+ <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3b4456"/></marker>
+ <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6d4fd6"/></marker>
+</defs>
+
+<text x="30" y="40" class="h">Operador · Reto 2 — arquitectura (C4 nivel 2 + zoom al worker)</text>
+<text x="30" y="62" class="s">Agente que opera apps sin API solo por pantalla (VNC 1280×800). Jesús Acevedo · Frontier CDMX · 31 oct 2026</text>
+
+<!-- Evaluador -->
+<rect x="30" y="110" width="210" height="150" rx="10" fill="#f1f3f7" stroke="#8a93a6" stroke-dasharray="6 4"/>
+<text x="45" y="137" class="t">Evaluador</text>
+<text x="45" y="158" class="s">oficial (oculto) o</text>
+<text x="45" y="176" class="s">nuestro arnés local</text>
+<text x="45" y="200" class="m">POST /tasks</text>
+<text x="45" y="218" class="m">GET /tasks/{id} c/5 s</text>
+<text x="45" y="240" class="s">5 min por tarea</text>
+
+<!-- Servicio container -->
+<rect x="280" y="90" width="820" height="860" rx="14" fill="#fbfaff" stroke="#6d4fd6" stroke-width="2"/>
+<text x="300" y="117" class="t" style="fill:#6d4fd6">Servicio del agente · 1 contenedor Docker (Node/TS + Playwright + SQLite) · Railway</text>
+
+<!-- API -->
+<rect x="300" y="135" width="370" height="95" rx="10" fill="#fff" stroke="#3b4456"/>
+<text x="315" y="160" class="t">API HTTP (Fastify)</text>
+<text x="315" y="181" class="m">GET /health · POST /tasks · GET /tasks/{id}</text>
+<text x="315" y="200" class="s">Bearer token del equipo · POST responde &lt; 2 s</text>
+<text x="315" y="218" class="s">(solo encola; nunca trabaja en la petición)</text>
+
+<!-- Store -->
+<rect x="700" y="135" width="380" height="95" rx="10" fill="#fff" stroke="#3b4456"/>
+<text x="715" y="160" class="t">Cola + estado de tareas (SQLite)</text>
+<text x="715" y="181" class="s">en_curso → terminada | fallida + resumen</text>
+<text x="715" y="200" class="s">1 tarea a la vez por escritorio</text>
+<text x="715" y="218" class="s">logs por paso: captura, acción, tokens, $</text>
+
+<!-- Worker -->
+<rect x="300" y="250" width="780" height="520" rx="12" fill="#fff" stroke="#3b4456" stroke-width="1.5"/>
+<text x="315" y="276" class="t">Worker · ciclo por tarea   (límites duros: deadline = POST + 4:30 con abort · ≈25 pasos · $ por tarea)</text>
+
+<!-- phase boxes -->
+<rect x="320" y="295" width="230" height="78" rx="8" fill="#eef6ff" stroke="#3d7bd9"/>
+<text x="332" y="318" class="t">1 · Orientar</text>
+<text x="332" y="338" class="s">primera captura; buscar "hoy"</text>
+<text x="332" y="355" class="s">solo si la tarea trae fechas</text>
+
+<rect x="575" y="295" width="230" height="78" rx="8" fill="#eef6ff" stroke="#3d7bd9"/>
+<text x="587" y="318" class="t">2 · Planear</text>
+<text x="587" y="338" class="s">pasos + criterio de éxito;</text>
+<text x="587" y="355" class="s">¿ambigua / peligrosa? → fallar</text>
+
+<rect x="830" y="295" width="230" height="78" rx="8" fill="#eef6ff" stroke="#3d7bd9"/>
+<text x="842" y="318" class="t">5 · Verificar + reportar</text>
+<text x="842" y="338" class="s">releer el registro en pantalla;</text>
+<text x="842" y="355" class="s">resumen con formato, sin secretos</text>
+
+<!-- loop -->
+<rect x="320" y="395" width="740" height="250" rx="10" fill="#f7f5ff" stroke="#6d4fd6" stroke-dasharray="5 4"/>
+<text x="335" y="418" class="t" style="fill:#6d4fd6">3–4 · Bucle observar → decidir → guardias → actuar</text>
+
+<rect x="340" y="435" width="160" height="110" rx="8" fill="#fff" stroke="#3b4456"/>
+<text x="352" y="458" class="t">Observar</text>
+<text x="352" y="478" class="s">captura estable</text>
+<text x="352" y="495" class="s">(dif &lt;0.2 %, máx 1.5 s)</text>
+<text x="352" y="512" class="s">+ OCR bajo demanda</text>
+<text x="352" y="529" class="s">(leer/buscar texto)</text>
+
+<rect x="525" y="435" width="170" height="110" rx="8" fill="#fff" stroke="#3b4456"/>
+<text x="537" y="458" class="t">Decidir</text>
+<text x="537" y="478" class="s">Claude + acciones</text>
+<text x="537" y="495" class="s">estilo computer use:</text>
+<text x="537" y="512" class="m" font-size="10.5">click·dblclick·type·key</text>
+<text x="537" y="529" class="m" font-size="10.5">scroll·wait·done·fail</text>
+
+<rect x="720" y="435" width="160" height="110" rx="8" fill="#fff6ec" stroke="#d98a2b"/>
+<text x="732" y="458" class="t">Guardias (código)</text>
+<text x="732" y="478" class="s">no repetir "Guardar"</text>
+<text x="732" y="495" class="s">ajustar clic al texto</text>
+<text x="732" y="512" class="s">lista negra teclas</text>
+<text x="732" y="529" class="s">tiempo / pasos / $</text>
+
+<rect x="905" y="435" width="140" height="110" rx="8" fill="#fff" stroke="#3b4456"/>
+<text x="917" y="458" class="t">Actuar</text>
+<text x="917" y="478" class="s">clic: down‑200ms‑up</text>
+<text x="917" y="495" class="s">texto: keysym RFB</text>
+<text x="917" y="512" class="s">por carácter (ñ, tildes)</text>
+<text x="917" y="529" class="s">esperar repintado</text>
+
+<line x1="500" y1="490" x2="522" y2="490" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="695" y1="490" x2="717" y2="490" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="880" y1="490" x2="902" y2="490" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M975,545 L975,600 L420,600 L420,548" fill="none" stroke="#6d4fd6" stroke-width="1.6" marker-end="url(#b)"/>
+<text x="560" y="625" class="lbl">repite hasta "terminar" / "fallar" o límite → fallida honesta</text>
+
+<line x1="550" y1="334" x2="572" y2="334" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="690" y1="373" x2="690" y2="392" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/><text x="698" y="388" class="lbl">2→3</text>
+<line x1="945" y1="395" x2="945" y2="376" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/><text x="953" y="388" class="lbl">4→5</text>
+
+<rect x="320" y="660" width="740" height="95" rx="8" fill="#fff6ec" stroke="#d98a2b"/>
+<text x="332" y="683" class="t">Política de seguridad del agente (código)</text>
+<text x="332" y="703" class="s">• Ante duda NO actúa: homónimos, registro inexistente, dato faltante o acción destructiva → fallida + datos.</text>
+<text x="332" y="721" class="s">• La contraseña nunca entra al prompt; filtro final en el resumen: contraseña, host del wss, token. Formato respuesta: forzado.</text>
+<text x="332" y="739" class="s">• Al reportar: desconecta VNC de inmediato → nada cae en la tarea siguiente.</text>
+
+<line x1="690" y1="772" x2="690" y2="788" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)" marker-start="url(#a)"/>
+<!-- Connector -->
+<rect x="300" y="790" width="780" height="140" rx="10" fill="#fff" stroke="#3b4456" stroke-width="1.5"/>
+<text x="315" y="815" class="t">Conector de escritorio (manos y ojos)</text>
+<text x="315" y="837" class="s">Chromium headless (Playwright) con página propia mínima que importa core/rfb.js de noVNC (cliente VNC, no agente)</text>
+<text x="315" y="856" class="s">apuntada al wss de cada POST /tasks → captura del canvas 1280×800, 1:1 verificado al conectar (tamaño y posición),</text>
+<text x="315" y="875" class="s">ratón sobre el canvas → PointerEvent RFB; texto → rfb.sendKey(keysym) por carácter; qualityLevel 9.</text>
+<text x="315" y="900" class="s">Un escritorio nuevo por tarea; nada fijo de SIGECOM.</text>
+
+<!-- OpenRouter -->
+<rect x="1140" y="420" width="330" height="150" rx="10" fill="#f1f3f7" stroke="#8a93a6" stroke-dasharray="6 4"/>
+<text x="1155" y="447" class="t">Modelo: Claude con visión</text>
+<text x="1155" y="469" class="s">A) API Anthropic directa, Sonnet 5.5,</text>
+<text x="1155" y="488" class="s">toolset computer nativo — verificado ✓</text>
+<text x="1155" y="507" class="s">B) OpenRouter + función común — verificado ✓</text>
+<text x="1155" y="530" class="s">key propia (A) · key del evento (B):</text>
+<text x="1155" y="549" class="s">US$45 de día · US$5 reservados</text>
+
+<!-- Desktop -->
+<rect x="1140" y="650" width="330" height="290" rx="10" fill="#f1f3f7" stroke="#8a93a6" stroke-dasharray="6 4"/>
+<text x="1155" y="677" class="t">Escritorio remoto (del evento, externo)</text>
+<rect x="1160" y="692" width="290" height="36" rx="6" fill="#fff" stroke="#8a93a6"/>
+<text x="1172" y="715" class="m">/websockify  (wss + contraseña)</text>
+<rect x="1160" y="740" width="290" height="36" rx="6" fill="#fff" stroke="#8a93a6"/>
+<text x="1172" y="763" class="s">servidor VNC · pantalla 1280×800</text>
+<rect x="1160" y="788" width="290" height="36" rx="6" fill="#fff" stroke="#8a93a6"/>
+<text x="1172" y="811" class="s">Chromium kiosko → app (SIGECOM / oculta)</text>
+<text x="1160" y="850" class="m">POST /__reset · POST /__check</text>
+<text x="1160" y="870" class="s">(solo para el arnés de pruebas,</text>
+<text x="1160" y="888" class="s">token del escritorio)</text>
+<line x1="1305" y1="728" x2="1305" y2="738" stroke="#8a93a6" stroke-width="1.4" marker-end="url(#a)"/>
+<line x1="1305" y1="776" x2="1305" y2="786" stroke="#8a93a6" stroke-width="1.4" marker-end="url(#a)"/>
+
+<!-- arrows between containers -->
+<line x1="240" y1="185" x2="297" y2="185" stroke="#3b4456" stroke-width="1.8" marker-end="url(#a)"/>
+<text x="243" y="176" class="lbl">HTTPS</text>
+<line x1="670" y1="182" x2="697" y2="182" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="890" y1="230" x2="890" y2="248" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M695,490 L695,490" />
+<path d="M610,545 L610,580 L1120,580 L1120,520 L1137,520" fill="none" stroke="#3b4456" stroke-width="1.6" marker-end="url(#a)" marker-start="url(#a)"/>
+<text x="1145" y="592" class="lbl">→ captura + tarea</text><text x="1145" y="608" class="lbl">← acción siguiente</text>
+<path d="M1080,840 L1120,840 L1120,710 L1137,710" fill="none" stroke="#3b4456" stroke-width="1.8" marker-end="url(#a)" marker-start="url(#a)"/>
+<text x="1070" y="815" class="lbl" text-anchor="end">wss · RFB →</text>
+<path d="M240,235 L260,235 L260,968 L1310,968 L1310,942" fill="none" stroke="#8a93a6" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="300" y="988" class="lbl">arnés local: __reset → POST /tasks → esperar → __check + chequeos propios (estado, respuesta, secretos)</text>
+
+<!-- legend -->
+<text x="30" y="320" class="lbl">Leyenda</text>
+<rect x="30" y="330" width="22" height="14" fill="#fbfaff" stroke="#6d4fd6"/><text x="60" y="342" class="s">lo que construimos</text>
+<rect x="30" y="352" width="22" height="14" fill="#f1f3f7" stroke="#8a93a6" stroke-dasharray="4 3"/><text x="60" y="364" class="s">externo</text>
+<rect x="30" y="374" width="22" height="14" fill="#fff6ec" stroke="#d98a2b"/><text x="60" y="386" class="s">regla dura en código</text>
+<rect x="30" y="396" width="22" height="14" fill="#eef6ff" stroke="#3d7bd9"/><text x="60" y="408" class="s">fase de la tarea</text>
+</svg>
+</body></html>

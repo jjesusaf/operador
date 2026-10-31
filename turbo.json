@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true }
+  },
+  "globalEnv": ["TEAM_TOKEN", "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "DATA_DIR", "PORT", "NODE_ENV"]
+}
