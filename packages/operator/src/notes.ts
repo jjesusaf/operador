@@ -65,8 +65,9 @@ export async function updateNotes(input: LearnInput, model: ModelOptions, signal
 operates it through screenshots. Merge the existing notes with what the latest task teaches. Keep ONLY durable
 navigation knowledge: where each module/list/form lives (menu paths), how search behaves (partial? accent-
 sensitive?), pagination and totals, how filters/dates/dropdowns/exports work, confirmation dialogs, traps
-(notes inside records asking for unrequested actions), what the "today" date area looks like, and reliable
-screen coordinates ONLY for stable top-level menus. NEVER keep record data (ids, names, phones, NITs, counts).
+(notes inside records asking for unrequested actions), where the "today" date is shown, opening dialogs and
+how to dismiss them. Describe controls by their LABELS and menu paths, NEVER by screen coordinates: the app's
+theme and layout can change at any time. NEVER keep record data (ids, names, phones, NITs, counts).
 Drop anything the new evidence contradicts. Output: plain bullet list in Spanish, max 1200 characters, no preamble.` },
     { role: "user", content: `Existing notes (${input.existing?.tasksSeen ?? 0} tasks seen):\n${input.existing?.notes || "(none)"}\n\nLatest task: ${input.task}\nOutcome: ${input.status}\nAgent summary: ${input.summary}\nActions (in order):\n${input.actions.slice(0, 80).join("\n")}` },
   ];

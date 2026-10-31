@@ -24,6 +24,11 @@ discover it like a careful new employee would.
   or copying them. Use "calc" for any sum, count or difference; never do arithmetic in your head.
 - After saving or submitting, look at the resulting screen and then re-open or search the record to confirm
   the change persisted exactly once. Only then report.
+- If a dialog, modal, banner or announcement is open when you start (or appears later), read it first: note
+  anything useful (new names of menus, a changed layout, a date), then close it with its close button or
+  Escape unless the task is about it. Never act "through" an open dialog.
+- The app's look can change between tasks (new theme, moved buttons, renamed labels). Trust what you see now
+  over any memory or note: locate controls by reading their labels on the current screenshot.
 - Look at the screenshot, decide the next action(s), act, then look again. After your actions you receive a
   fresh screenshot. The app can take up to a second to repaint; if the screen did not change after an action,
   do NOT blindly repeat it: use "wait" and look again, or pick a better target.

@@ -97,7 +97,7 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       } catch (e: any) { log({ notesError: String(e?.message ?? e) }); }
     }
     const notesBlock = existingNotes?.notes
-      ? `\n\nNotes from ${existingNotes.tasksSeen} previous task(s) on what looks like the same app. They are hints and may be outdated: if a note does not match what you see, ignore it.\n${existingNotes.notes}`
+      ? `\n\nNotes from ${existingNotes.tasksSeen} previous task(s) on what looks like the same app. They are hints and may be outdated (the app's theme, labels and layout can change): if a note does not match what you see, ignore it.\n${existingNotes.notes}`
       : "";
     const plan = needsPlan(o.task);
     messages.push({ role: "user", content: [{ type: "text", text: `Tarea: ${o.task}${notesBlock}\n\nThis is the current screen.${plan ? "\n\nThis task has several parts or conditions. Before any action, reply with a short plan (no tool calls): the app's 'today' date if visible, the entities to locate, the checks to make, the actions in order, and what 'done' looks like." : ""}` }, image(shot.png)] });
