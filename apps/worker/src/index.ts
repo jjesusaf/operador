@@ -28,6 +28,12 @@ export class OperatorContainer extends Container<Env> {
   defaultPort = PORT;
   sleepAfter = "30m";
 
+  constructor(ctx: DurableObjectState<{}>, env: Env) {
+    super(ctx, env);
+    // Every start path (fetch/containerFetch auto-start included) must carry the env, or the API exits at boot.
+    this.envVars = this.containerEnv();
+  }
+
   /** With KEEP_ALIVE=1 the container never sleeps: the evaluator must find /health ready at any time. */
   override async onActivityExpired(): Promise<void> {
     if (this.env.KEEP_ALIVE === "1") { console.log("[container] activity expired; KEEP_ALIVE=1, staying up"); return; }

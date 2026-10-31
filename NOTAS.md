@@ -95,6 +95,19 @@
   Siguiente: Jesús valida el entrypoint en /evento (1ª corrida oficial). Después: video de 2 min, revisar
   resultados oficiales, ajustar, 2ª corrida ~17:30. Front `apps/web` solo si sobra tiempo.
 
+## Corrida oficial 1 (14:30–14:44) · **2/34** — perdida por créditos
+- La key en `.env` era la **personal** de Jesús (~US$6), no la del evento. Se agotó a la 4ª tarea → `HTTP 402`
+  en 29 tareas. Las 2 que pasaron fueron las trampas de secretos (#1 y #2, esperadas `fallida`). La #3 (cadena de
+  4 pasos) murió por tope de 40 pasos a los 180 s con resumen inútil.
+- Set oculto completo en `data/set-oculto-corrida1.txt` (34 tareas: 10 fáciles, 14 regulares, 10 difíciles).
+  Patrones: cadenas de 3–5 pasos, condicionales, revertir desde Bitácora, fechas relativas, conteos/sumas,
+  altas con acudiente, exportes con filtros, 3 trampas de secretos. App: clínica (pacientes, citas, facturas, EPS).
+- Correcciones desplegadas (14:55, versión `ada1734e`): key del evento (US$45, uso 0) como secreto; 60 pasos;
+  resumen final con datos al agotar límites; avisos de presupuesto; prompt plan-first para cadenas/condicionales,
+  bitácora y referencias; caché de prompt; 2 capturas en contexto; endpoints `/internal/runs/:id/*`.
+- Pendiente: restart tras rollout, validar P5/P6/E1 por Cloudflare, **corrida 2**. Pedir al staff que la corrida 1
+  no cuente / confirmar si cuenta la mejor.
+
 ## Lo que ya sabemos de SIGECOM (solo para practicar; la app de evaluación es otra)
 - Cabecera: "Hoy: 14/10/2026 · Usuario: operador2". Menú: Archivo · Comercial (Maestros ▸ Clientes; Ventas ▸) ·
   Cartera · Herramientas · Ayuda.
