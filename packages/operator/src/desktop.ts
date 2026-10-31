@@ -38,11 +38,27 @@ export class Desktop {
   private closed = false;
   private constructor(private ws: WebSocket, private client: RfbClient, private fb: Framebuffer, private opt: Required<DesktopOptions>) {}
 
+  /** Connects with retries: a freshly reset desktop can take a few seconds before its VNC handshake answers. */
   static async connect(wssUrl: string, password: string, options: DesktopOptions = {}): Promise<Desktop> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try { return await Desktop.connectOnce(wssUrl, password, options); }
+      catch (e) {
+        lastError = e;
+        console.warn(`[desktop] connect attempt ${attempt} failed: ${(e as Error)?.message ?? e}`);
+        if (attempt < 3) await sleep(1500 * attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  private static async connectOnce(wssUrl: string, password: string, options: DesktopOptions): Promise<Desktop> {
     const opt: Required<DesktopOptions> = { clickHoldMs: 200, keyDelayMs: 25, settleMaxMs: 1500, settleThreshold: 0.002, quietMs: 250, ...options };
-    const ws = new WebSocket(wssUrl, ["binary"], { perMessageDeflate: false });
+    const ws = new WebSocket(wssUrl, ["binary"], { perMessageDeflate: false, handshakeTimeout: 10_000 });
     await new Promise<void>((res, rej) => { ws.once("open", () => res()); ws.once("error", rej); });
-    const client = await connect({ stream: createWebSocketStream(ws, { objectMode: false }), password, timeout: 10_000, initialUpdate: true });
+    let client: RfbClient;
+    try { client = await connect({ stream: createWebSocketStream(ws, { objectMode: false }), password, timeout: 10_000, initialUpdate: true }); }
+    catch (e) { try { ws.terminate(); } catch {} throw e; }
     const fb = Framebuffer.attach(client);
     const desktop = new Desktop(ws, client, fb, opt);
     client.on("error", (e: Error) => console.error("[desktop] rfb error:", e.message));

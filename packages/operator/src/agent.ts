@@ -8,7 +8,7 @@ import { appFingerprint, updateNotes, type AppNotes, type NotesStore } from "./n
 export interface RunOptions {
   task: string;
   desktop: { url: string; password: string };
-  model: { apiKey: string; model: string };
+  model: { apiKey: string; model: string; fastModel?: string }; // fastModel: simple tasks + notebook upkeep
   notes?: NotesStore;         // per-app notebook (read at start, updated after reporting)
   deadlineMs?: number;        // hard stop measured from start (default 4:30)
   maxSteps?: number;          // model turns
@@ -20,7 +20,7 @@ export interface RunOptions {
 }
 
 export interface StepInfo { step: number; elapsedMs: number; modelMs: number; cost: number; calls: string[]; }
-export interface RunResult { status: "done" | "failed"; summary: string; steps: number; costUsd: number; elapsedMs: number; inputEvents: number; reason?: string; fingerprint?: string; notesUsed: boolean; }
+export interface RunResult { status: "done" | "failed"; summary: string; steps: number; costUsd: number; elapsedMs: number; inputEvents: number; reason?: string; fingerprint?: string; notesUsed: boolean; model: string; }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,11 +28,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function needsPlan(task: string): boolean {
   const t = task.toLowerCase();
   // Long instructions, or ones with conditions / sequencing words. (No sentence counting: "Dra." would trigger it.)
-  return t.length > 140 || /\bsi\b|\bluego\b|\bdespués\b|\bdespues\b|\bprimero\b|\bantes de\b|\bmism[oa]\b|\bdeshaz|\brevierte|\bbitácora|\bbitacora|\by (?:anula|agenda|agéndale|factura|cancela|registra|dale|déjala|dejala)\b/.test(t);
+  return t.length > 140 || /\bsi\b|\bluego\b|\bdespués\b|\bdespues\b|\bprimero\b|\bantes de\b|\bmism[oa]\b|\bdeshaz|\brevierte|\bbitácora|\bbitacora|\by (?:anula|agenda|agéndale|factura|cancela|registra|dale|déjala|dejala)\b|ag[eé]nd|\bcupo|lista de espera|reactiv|autorizaci[oó]n|\btotal\b|en total/.test(t);
 }
 
-export async function runTask(o: RunOptions): Promise<RunResult> {
+export async function runTask(input: RunOptions): Promise<RunResult> {
   const t0 = Date.now();
+  // Route by difficulty: chained/conditional tasks get the strong model, simple ones the fast/cheap one.
+  const complex = needsPlan(input.task);
+  const taskModel = !complex && input.model.fastModel ? input.model.fastModel : input.model.model;
+  const o: RunOptions = { ...input, model: { ...input.model, model: taskModel } };
+  const notesModel = { apiKey: input.model.apiKey, model: input.model.fastModel || input.model.model };
   const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 60, maxCost = o.maxCostUsd ?? 1.5, keep = o.keepScreenshots ?? 2;
   const logDir = o.logDir ?? `runs/${new Date().toISOString().replace(/[:.]/g, "-")}`;
   mkdirSync(logDir, { recursive: true });
@@ -50,11 +55,11 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
 
   const finish = (status: "done" | "failed", summary: string, reason?: string): RunResult => {
     clearTimeout(deadlineTimer);
-    const result: RunResult = { status, summary: sanitizeSummary(summary, status, secrets), steps, costUsd: cost, elapsedMs: Date.now() - t0, inputEvents: desktop?.inputEventCount ?? 0, reason, fingerprint, notesUsed: !!existingNotes };
+    const result: RunResult = { status, summary: sanitizeSummary(summary, status, secrets), steps, costUsd: cost, elapsedMs: Date.now() - t0, inputEvents: desktop?.inputEventCount ?? 0, reason, fingerprint, notesUsed: !!existingNotes, model: taskModel };
     // Learning runs after the result is known and never delays the report (fire and forget, no desktop access).
     if (o.notes && fingerprint && reason !== "error") {
       const store = o.notes, fp = fingerprint, prev = existingNotes;
-      void updateNotes({ task: o.task, status, summary: result.summary, actions: actionLog, existing: prev }, o.model)
+      void updateNotes({ task: o.task, status, summary: result.summary, actions: actionLog, existing: prev }, notesModel)
         .then((notes) => notes ? store.put({ fingerprint: fp, notes, tasksSeen: (prev?.tasksSeen ?? 0) + 1, updatedAt: Date.now() }) : undefined)
         .then(() => log({ notesUpdated: true }))
         .catch((e) => log({ notesError: String(e?.message ?? e) }));
@@ -93,7 +98,7 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       try {
         fingerprint = await appFingerprint(shot.png, shot.width);
         existingNotes = await o.notes.get(fingerprint);
-        log({ fingerprint, notesFound: !!existingNotes, tasksSeen: existingNotes?.tasksSeen ?? 0 });
+        log({ fingerprint, notesFound: !!existingNotes, tasksSeen: existingNotes?.tasksSeen ?? 0, model: taskModel, complex });
       } catch (e: any) { log({ notesError: String(e?.message ?? e) }); }
     }
     const notesBlock = existingNotes?.notes
@@ -101,7 +106,8 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       : "";
     const plan = needsPlan(o.task);
     messages.push({ role: "user", content: [{ type: "text", text: `Tarea: ${o.task}${notesBlock}\n\nThis is the current screen.${plan ? "\n\nThis task has several parts or conditions. Before any action, reply with a short plan (no tool calls): the app's 'today' date if visible, the entities to locate, the checks to make, the actions in order, and what 'done' looks like." : ""}` }, image(shot.png)] });
-    let nudges = 0, planPending = plan;
+    let nudges = 0, planPending = plan, emptyReports = 0;
+    const recentSignatures: string[] = []; // action batches of the last turns, to detect loops
 
     while (true) {
       if (abort.signal.aborted) return finishOnLimit("deadline", "No se completó la tarea dentro del tiempo límite; no se hicieron cambios adicionales.");
@@ -110,6 +116,7 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       steps++;
 
       pruneImages(messages, keep);
+      markCacheBoundary(messages);
       const reply = await chat(messages, o.model, abort.signal, planPending ? { toolChoice: "none" } : {});
       cost += reply.cost;
       messages.push(reply.message);
@@ -132,6 +139,19 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
         continue;
       }
 
+      // Loop guard: the same batch of screen actions over and over means the approach is not working.
+      const signature = reply.toolCalls.filter((c) => c.function.name === "computer").map((c) => {
+        try { const a = JSON.parse(c.function.arguments || "{}"); return `${a.action}:${a.coordinate ?? ""}:${a.text ?? ""}`; } catch { return c.function.arguments; }
+      }).filter((s) => !s.startsWith("screenshot") && !s.startsWith("zoom") && !s.startsWith("wait")).join("|");
+      let loopWarning = "";
+      if (signature) {
+        recentSignatures.push(signature);
+        if (recentSignatures.length > 10) recentSignatures.shift();
+        const repeats = recentSignatures.filter((s) => s === signature).length;
+        if (repeats >= 5) { log({ loop: signature, repeats }); return finishOnLimit("loop", "La acción necesaria no tuvo efecto tras varios intentos; no se completó la tarea."); }
+        if (repeats >= 3) loopWarning = ` LOOP WARNING: you have done exactly this ${repeats} times and it is not working. Do NOT repeat it. Read the screen for an error or confirmation message, try a genuinely different approach, or, if the app does not allow it, call report with status "failed" explaining exactly why (what you tried and what the app showed).`;
+      }
+
       // Guard: 'report' must come alone, after looking at the result. If it is mixed with actions, run the
       // actions, show the screen, and let the model report on the next turn.
       const hasActions = reply.toolCalls.some((c) => c.function.name === "computer");
@@ -143,6 +163,13 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
           case "report": {
             if (hasActions) { messages.push(toolResult(call, "Not accepted: 'report' must be called alone, after you have seen the screen following your last action. Look at the next screenshot, verify, then report.")); log({ reportRejected: true }); break; }
             const r = args as ReportArgs;
+            if ((r.status !== "done" && r.status !== "failed") || !String(r.summary ?? "").trim()) {
+              emptyReports++;
+              log({ reportRejected: "empty", args: r });
+              if (emptyReports >= 2) return finishOnLimit("empty_report", "No se completó la tarea.");
+              messages.push(toolResult(call, "Not accepted: 'report' needs status ('done' or 'failed') AND a summary in Spanish explaining what you did, what you found and, if failed, exactly why (name the data). Call report again with both."));
+              break;
+            }
             messages.push(toolResult(call, "OK"));
             log({ report: r });
             return finish(r.status === "done" ? "done" : "failed", r.summary ?? "");
@@ -192,12 +219,12 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
         const budget = steps >= maxSteps - 25 || left <= 75
           ? ` Budget warning: ${maxSteps - steps} turns and ${left}s left. If you are not clearly making progress, verify what you have done and call report (status "failed" if the task is not complete, naming what you found).`
           : "";
-        const content: Extract<ChatMessage, { role: "user" }>["content"] = [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}${budget}${factsBlock()}` }, image(shot.png)];
+        const content: Extract<ChatMessage, { role: "user" }>["content"] = [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}${loopWarning}${budget}${factsBlock()}` }, image(shot.png)];
         for (const z of zooms) content.push({ type: "text", text: "Zoomed region:" }, image(z));
         messages.push({ role: "user", content });
       } else {
         // Only notes/calc this turn: no new screen, but keep the facts visible.
-        messages.push({ role: "user", content: `Continue.${factsBlock()}` });
+        messages.push({ role: "user", content: `Continue.${loopWarning}${factsBlock()}` });
       }
     }
   } catch (e: any) {
@@ -232,6 +259,27 @@ async function execute(desktop: Desktop, a: ComputerAction, signal: AbortSignal)
 
 function image(png: Buffer) { return { type: "image_url" as const, image_url: { url: `data:image/png;base64,${png.toString("base64")}` } }; }
 function toolResult(call: ToolCall, content: string): ChatMessage { return { role: "tool", tool_call_id: call.id, content }; }
+
+/**
+ * Incremental prompt caching. The conversation is append-only except for pruned screenshots, so the prefix that
+ * ends right before the oldest screenshot still in context is byte-stable from one turn to the next. Put the cache
+ * breakpoint at the end of the last user message inside that prefix (the system prompt keeps its own breakpoint);
+ * the provider's lookback finds the entry written on the previous turn and bills that prefix at the cached rate.
+ */
+function markCacheBoundary(messages: ChatMessage[]) {
+  for (const m of messages) {
+    if (m.role === "user" && typeof m.content !== "string") for (const p of m.content) if (p.type === "text") delete p.cache_control;
+  }
+  const firstImage = messages.findIndex((m) => m.role === "user" && typeof m.content !== "string" && m.content.some((p) => p.type === "image_url"));
+  const limit = firstImage < 0 ? messages.length : firstImage;
+  for (let i = limit - 1; i > 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    if (typeof m.content === "string") m.content = [{ type: "text", text: m.content }];
+    const texts = m.content.filter((p) => p.type === "text");
+    if (texts.length) { (texts[texts.length - 1] as { cache_control?: { type: "ephemeral" } }).cache_control = { type: "ephemeral" }; return; }
+  }
+}
 
 /** Keep only the last `keep` screenshots in the conversation; older ones become a short text note. */
 function pruneImages(messages: ChatMessage[], keep: number) {

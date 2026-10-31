@@ -24,6 +24,7 @@
   ],
   "vars": {
     "OPENROUTER_MODEL": "anthropic/claude-sonnet-5.5",
+    "OPENROUTER_MODEL_FAST": "anthropic/claude-haiku-5.5",
     "TEAM_NAME": "operador",
     "KEEP_ALIVE": "1",
     "PUBLIC_URL": "https://operador.jose-de-jesus-acevedo-flores.workers.dev"

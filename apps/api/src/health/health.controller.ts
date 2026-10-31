@@ -13,7 +13,7 @@ export class HealthController {
       status: "ok",
       team: this.config.teamName,
       version: this.config.version,
-      models: [this.config.model],
+      models: [this.config.model, this.config.fastModel].filter(Boolean),
       notebook: this.config.notesUrl ? "d1" : "memory",
       tasks: this.tasks.stats(),
     };

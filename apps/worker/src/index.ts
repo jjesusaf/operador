@@ -11,6 +11,7 @@ export interface Env {
   OPENROUTER_API_KEY: string;
   OPENROUTER_API_KEY_DEV?: string;
   OPENROUTER_MODEL: string;
+  OPENROUTER_MODEL_FAST?: string;
   TEAM_NAME: string;
   PUBLIC_URL: string;
   KEEP_ALIVE?: string;
@@ -49,7 +50,7 @@ export class OperatorContainer extends Container<Env> {
       NODE_ENV: "production", PORT: String(PORT), DATA_DIR: "/data",
       TEAM_TOKEN: this.env.TEAM_TOKEN, OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY,
       ...(this.env.OPENROUTER_API_KEY_DEV ? { OPENROUTER_API_KEY_DEV: this.env.OPENROUTER_API_KEY_DEV } : {}),
-      OPENROUTER_MODEL: this.env.OPENROUTER_MODEL, TEAM_NAME: this.env.TEAM_NAME,
+      OPENROUTER_MODEL: this.env.OPENROUTER_MODEL, OPENROUTER_MODEL_FAST: this.env.OPENROUTER_MODEL_FAST ?? "", TEAM_NAME: this.env.TEAM_NAME,
       NOTES_URL: this.env.PUBLIC_URL, // the agent reads/writes its notebook through this Worker
     };
   }
@@ -122,7 +123,7 @@ app.get("/health", async (c) => {
   try { containerStatus = await container.containerStatus(); } catch (e) { console.error("[health] state failed", e); }
   const counts = await c.env.DB.prepare("SELECT estado, COUNT(*) AS n FROM tasks GROUP BY estado").all<{ estado: string; n: number }>();
   const ledger = Object.fromEntries((counts.results ?? []).map((r) => [r.estado, r.n]));
-  return c.json({ status: "ok", team: c.env.TEAM_NAME, version: "0.2.0", models: [c.env.OPENROUTER_MODEL], container: containerStatus, ledger });
+  return c.json({ status: "ok", team: c.env.TEAM_NAME, version: "0.3.0", models: [c.env.OPENROUTER_MODEL, c.env.OPENROUTER_MODEL_FAST].filter(Boolean), container: containerStatus, ledger });
 });
 
 app.use("/tasks", requireBearer);

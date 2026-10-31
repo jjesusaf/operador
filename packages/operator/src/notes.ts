@@ -68,9 +68,12 @@ sensitive?), pagination and totals, how filters/dates/dropdowns/exports work, co
 (notes inside records asking for unrequested actions), where the "today" date is shown, opening dialogs and
 how to dismiss them. Describe controls by their LABELS and menu paths, NEVER by screen coordinates: the app's
 theme and layout can change at any time. NEVER keep record data (ids, names, phones, NITs, counts).
-Drop anything the new evidence contradicts. Output: plain bullet list in Spanish, max 1200 characters, no preamble.` },
+Drop anything the new evidence contradicts. ALWAYS keep, as the first bullet, a menu map that accumulates
+every top-level menu and the items seen inside it, e.g. "Mapa: Agenda › Citas, Crear cita, Lista de espera |
+Facturación › Facturas, Pagos | Herramientas › Bitácora de cambios". Never drop items from the map unless the
+app clearly removed them. Output: plain bullet list in Spanish, max 1800 characters, no preamble.` },
     { role: "user", content: `Existing notes (${input.existing?.tasksSeen ?? 0} tasks seen):\n${input.existing?.notes || "(none)"}\n\nLatest task: ${input.task}\nOutcome: ${input.status}\nAgent summary: ${input.summary}\nActions (in order):\n${input.actions.slice(0, 80).join("\n")}` },
   ];
-  const reply = await chat(messages, { ...model, maxTokens: 600 }, signal, { withTools: false });
-  return reply.text.trim().slice(0, 1500);
+  const reply = await chat(messages, { ...model, maxTokens: 900 }, signal, { withTools: false });
+  return reply.text.trim().slice(0, 2000);
 }

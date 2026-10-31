@@ -68,7 +68,7 @@ export const tools = [
 
 export type ChatMessage =
   | { role: "system"; content: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> }
-  | { role: "user"; content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> }
+  | { role: "user"; content: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } } | { type: "image_url"; image_url: { url: string } }> }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 

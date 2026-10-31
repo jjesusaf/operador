@@ -75,7 +75,7 @@ export class TasksService implements OnModuleDestroy {
     const result = await runTask({
       task: req.tarea,
       desktop: { url: req.escritorio.url, password: req.escritorio.password },
-      model: { apiKey, model: this.config.model },
+      model: { apiKey, model: this.config.model, fastModel: this.config.fastModel },
       notes: this.notes,
       deadlineMs: remaining,
       maxCostUsd: this.config.maxCostPerTaskUsd,
