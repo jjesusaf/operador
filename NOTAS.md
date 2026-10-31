@@ -105,8 +105,33 @@
 - Correcciones desplegadas (14:55, versión `ada1734e`): key del evento (US$45, uso 0) como secreto; 60 pasos;
   resumen final con datos al agotar límites; avisos de presupuesto; prompt plan-first para cadenas/condicionales,
   bitácora y referencias; caché de prompt; 2 capturas en contexto; endpoints `/internal/runs/:id/*`.
-- Pendiente: restart tras rollout, validar P5/P6/E1 por Cloudflare, **corrida 2**. Pedir al staff que la corrida 1
-  no cuente / confirmar si cuenta la mejor.
+- Validación post-fix por Cloudflare con la key del evento (15:05–15:12): P5 condicional ✓ 32 s · P6 no-duplicar ✓
+  16 s (`respuesta: CL-0065`) · E1 ✓ 37 s. Costo con caché: **~US$0.075/tarea** (3 tareas = US$0.226).
+- Incidente: una P6 previa murió porque mi redeploy reemplazó el contenedor con la tarea en vuelo → **regla:
+  ningún deploy ni restart mientras corra una corrida oficial**. El Worker ahora marca `fallida` al instante si
+  el contenedor ya no conoce la tarea (`forward_error = container_restarted`).
+- Bug corregido: rutas que arrancaban el contenedor sin env (`envVars` ahora se fija en el constructor del DO).
+- Pendiente: confirmar rollout, **corrida 2** (~15:25). Pedir al staff que la corrida 1 no cuente / confirmar si
+  cuenta la mejor de 3.
+
+## Fase 4 · Robustez (15:20–15:45) + Incidente FR-0153
+- Decisión de Jesús: no quemar la corrida 2 sin validar; pruebas en **producción** con la key de dev
+  (`X-Key-Profile: dev` → `OPENROUTER_API_KEY_DEV`, US$20 cargados); key del evento solo para corridas oficiales.
+- Cambios: herramienta `note` + bloque "Your notes so far" en cada turno; turno de plan (texto) para tareas
+  largas/condicionales (`needsPlan`); `report` debe ir solo; `zoom` (recorte ×2) y `calc`; `respuesta:` sin `$`
+  ni separadores; 60 pasos; 2 capturas en contexto.
+- **Incidente 15:00 (ticket FR-0153):** la app cambia de tema (botones movados, etiquetas distintas, modal al
+  abrir). Respuesta: prompt para leer/cerrar modales y confiar en la pantalla actual; cuaderno **sin
+  coordenadas**; cuadernos viejos borrados de D1. A las 15:45 el escritorio de práctica aún mostraba el tema viejo.
+- Local con key dev: P8 ✓ 35 s $0.07 (retiene dos NITs) · P7 ✓ 53 s $0.16 (plan → note → zoom → condicional).
+- Pruebas: P7 cadena+condicional, P8 retener datos, P9 conteo con homónimo (6).
+- Deploy 15:40 (`0c4cf884`). **Batería en producción 15:52–16:03: 14/14 PASS, 0 falsos éxitos**; el tema v4.2
+  (barra verde, "Filtrar", "Crear cliente" a la derecha) entró a mitad de la batería y P3–P9 pasaron sobre él.
+- Ojo: la batería se cobró a la key del evento (+US$2.44) porque el contenedor arrancó antes del rollout y no
+  tenía `OPENROUTER_API_KEY_DEV`; tras `restart`, `--dev-key` ya cobra a la key de dev (verificado con E5).
+  Key del evento: US$2.75 usados, ~US$42 libres. Estimación corrida oficial: US$6–10.
+- `/data/runs` se pierde con cada restart (disco efímero): leer logs de corridas oficiales ANTES de reiniciar.
+- **16:05: compuerta superada → corrida 2.** Regla: sin deploys ni restarts mientras corra.
 
 ## Lo que ya sabemos de SIGECOM (solo para practicar; la app de evaluación es otra)
 - Cabecera: "Hoy: 14/10/2026 · Usuario: operador2". Menú: Archivo · Comercial (Maestros ▸ Clientes; Ventas ▸) ·
