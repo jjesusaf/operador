@@ -1,7 +1,7 @@
 // The agent loop: observe → decide → guard → act, with hard limits on time, steps and cost.
 import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { Desktop } from "./desktop.js";
-import { chat, type ChatMessage, type ComputerAction, type ReportArgs, type ToolCall } from "./model.js";
+import { chat, calculate, type ChatMessage, type ComputerAction, type ReportArgs, type ToolCall } from "./model.js";
 import { systemPrompt } from "./prompt.js";
 import { appFingerprint, updateNotes, type AppNotes, type NotesStore } from "./notes.js";
 
@@ -24,6 +24,13 @@ export interface RunResult { status: "done" | "failed"; summary: string; steps: 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Tasks with several parts or conditions get a text-only planning turn before any action. */
+export function needsPlan(task: string): boolean {
+  const t = task.toLowerCase();
+  // Long instructions, or ones with conditions / sequencing words. (No sentence counting: "Dra." would trigger it.)
+  return t.length > 140 || /\bsi\b|\bluego\b|\bdespués\b|\bdespues\b|\bprimero\b|\bantes de\b|\bmism[oa]\b|\bdeshaz|\brevierte|\bbitácora|\bbitacora|\by (?:anula|agenda|agéndale|factura|cancela|registra|dale|déjala|dejala)\b/.test(t);
+}
+
 export async function runTask(o: RunOptions): Promise<RunResult> {
   const t0 = Date.now();
   const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 60, maxCost = o.maxCostUsd ?? 1.5, keep = o.keepScreenshots ?? 2;
@@ -38,6 +45,9 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
   let cost = 0, steps = 0;
   let fingerprint: string | undefined, existingNotes: AppNotes | null = null;
   const actionLog: string[] = [];
+  const facts: string[] = []; // the agent's own notes for this task (survive screenshot pruning)
+  const messages: ChatMessage[] = [];
+
   const finish = (status: "done" | "failed", summary: string, reason?: string): RunResult => {
     clearTimeout(deadlineTimer);
     const result: RunResult = { status, summary: sanitizeSummary(summary, status, secrets), steps, costUsd: cost, elapsedMs: Date.now() - t0, inputEvents: desktop?.inputEventCount ?? 0, reason, fingerprint, notesUsed: !!existingNotes };
@@ -52,11 +62,31 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
     return result;
   };
 
+  /** When a hard limit stops the loop, ask for a short final summary so the report still names what was found. */
+  const finishOnLimit = async (reason: string, fallback: string): Promise<RunResult> => {
+    await desktop?.close(); // stop touching the desktop first
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12_000);
+      const tail = messages.filter((m) => m.role !== "system").slice(-6).map((m) => (m.role === "user" && typeof m.content !== "string") ? { ...m, content: m.content.filter((p) => p.type === "text") } : m);
+      const reply = await chat([
+        { role: "system", content: "You are the same operator. The task was stopped by a hard limit. Write the final report in Spanish, 2-4 sentences: what you managed to find or do (name concrete data: ids, names, dates, references), what was pending, and that no further changes were made. No 'respuesta:' line unless you are certain of the answer. Never include passwords, tokens or URLs." },
+        ...(facts.length ? [{ role: "user" as const, content: `Your notes during the task:\n${facts.map((f) => `- ${f}`).join("\n")}` }] : []),
+        ...tail,
+        { role: "user", content: `Stopped: ${reason}. Write the final report now.` },
+      ], { ...o.model, maxTokens: 400 }, ctrl.signal, { withTools: false });
+      clearTimeout(t); cost += reply.cost;
+      if (reply.text.trim()) return finish("failed", reply.text.trim(), reason);
+    } catch (e: any) { log({ finalSummaryError: String(e?.message ?? e) }); }
+    return finish("failed", fallback, reason);
+  };
+
+  const factsBlock = () => facts.length ? `\n\nYour notes so far:\n${facts.map((f, i) => `${i + 1}. ${f}`).join("\n")}` : "";
+
   try {
     desktop = await Desktop.connect(o.desktop.url, o.desktop.password);
     // The system prompt (and the tool definitions before it) is identical on every turn: mark it cacheable
     // so Anthropic's prompt cache (through OpenRouter) stops charging for it after the first turn.
-    const messages: ChatMessage[] = [{ role: "system", content: [{ type: "text", text: systemPrompt(desktop.width, desktop.height), cache_control: { type: "ephemeral" } }] }];
+    messages.push({ role: "system", content: [{ type: "text", text: systemPrompt(desktop.width, desktop.height), cache_control: { type: "ephemeral" } }] });
     let shot = await desktop.screenshot();
     writeFileSync(`${logDir}/step-00.png`, shot.png);
     if (o.notes) {
@@ -69,25 +99,9 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
     const notesBlock = existingNotes?.notes
       ? `\n\nNotes from ${existingNotes.tasksSeen} previous task(s) on what looks like the same app. They are hints and may be outdated: if a note does not match what you see, ignore it.\n${existingNotes.notes}`
       : "";
-    messages.push({ role: "user", content: [{ type: "text", text: `Tarea: ${o.task}${notesBlock}\n\nThis is the current screen.` }, image(shot.png)] });
-    let nudges = 0;
-
-    /** When a hard limit stops the loop, ask for a short final summary so the report still names what was found. */
-    const finishOnLimit = async (reason: string, fallback: string): Promise<RunResult> => {
-      await desktop?.close(); // stop touching the desktop first
-      try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12_000);
-        const tail = messages.filter((m) => m.role !== "system").slice(-6).map((m) => (m.role === "user" && typeof m.content !== "string") ? { ...m, content: m.content.filter((p) => p.type === "text") } : m);
-        const reply = await chat([
-          { role: "system", content: "You are the same operator. The task was stopped by a hard limit. Write the final report in Spanish, 2-4 sentences: what you managed to find or do (name concrete data: ids, names, dates, references), what was pending, and that no further changes were made. No 'respuesta:' line unless you are certain of the answer. Never include passwords, tokens or URLs." },
-          ...tail,
-          { role: "user", content: `Stopped: ${reason}. Write the final report now.` },
-        ], { ...o.model, maxTokens: 400 }, ctrl.signal, { withTools: false });
-        clearTimeout(t); cost += reply.cost;
-        if (reply.text.trim()) return finish("failed", reply.text.trim(), reason);
-      } catch (e: any) { log({ finalSummaryError: String(e?.message ?? e) }); }
-      return finish("failed", fallback, reason);
-    };
+    const plan = needsPlan(o.task);
+    messages.push({ role: "user", content: [{ type: "text", text: `Tarea: ${o.task}${notesBlock}\n\nThis is the current screen.${plan ? "\n\nThis task has several parts or conditions. Before any action, reply with a short plan (no tool calls): the app's 'today' date if visible, the entities to locate, the checks to make, the actions in order, and what 'done' looks like." : ""}` }, image(shot.png)] });
+    let nudges = 0, planPending = plan;
 
     while (true) {
       if (abort.signal.aborted) return finishOnLimit("deadline", "No se completó la tarea dentro del tiempo límite; no se hicieron cambios adicionales.");
@@ -96,13 +110,20 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       steps++;
 
       pruneImages(messages, keep);
-      const reply = await chat(messages, o.model, abort.signal);
+      const reply = await chat(messages, o.model, abort.signal, planPending ? { toolChoice: "none" } : {});
       cost += reply.cost;
       messages.push(reply.message);
       if (reply.text) actionLog.push(`[plan/thought] ${reply.text.slice(0, 200)}`);
       const names = reply.toolCalls.map((c) => { try { const a = JSON.parse(c.function.arguments); return c.function.name === "computer" ? a.action : c.function.name; } catch { return c.function.name; } });
-      log({ step: steps, modelMs: reply.latencyMs, cost: reply.cost, promptTokens: reply.promptTokens, cachedTokens: reply.cachedTokens, calls: names, text: reply.text.slice(0, 300) });
+      log({ step: steps, modelMs: reply.latencyMs, cost: reply.cost, promptTokens: reply.promptTokens, cachedTokens: reply.cachedTokens, calls: names, text: reply.text.slice(0, 400) });
       o.onStep?.({ step: steps, elapsedMs: Date.now() - t0, modelMs: reply.latencyMs, cost: reply.cost, calls: names });
+
+      if (planPending) {
+        planPending = false;
+        if (reply.text.trim()) facts.push(`Plan: ${reply.text.trim().replace(/\s+/g, " ").slice(0, 700)}`);
+        messages.push({ role: "user", content: "Good. Now execute the plan step by step. Use 'note' for every key fact you read." });
+        continue;
+      }
 
       if (reply.toolCalls.length === 0) {
         nudges++;
@@ -111,27 +132,59 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
         continue;
       }
 
+      // Guard: 'report' must come alone, after looking at the result. If it is mixed with actions, run the
+      // actions, show the screen, and let the model report on the next turn.
+      const hasActions = reply.toolCalls.some((c) => c.function.name === "computer");
       let needsScreenshot = false, lastWasAction = false;
+      const zooms: Buffer[] = [];
       for (const call of reply.toolCalls) {
         let args: any; try { args = JSON.parse(call.function.arguments || "{}"); } catch { args = {}; }
-        if (call.function.name === "report") {
-          const r = args as ReportArgs;
-          messages.push(toolResult(call, "OK"));
-          log({ report: r });
-          return finish(r.status === "done" ? "done" : "failed", r.summary ?? "");
+        switch (call.function.name) {
+          case "report": {
+            if (hasActions) { messages.push(toolResult(call, "Not accepted: 'report' must be called alone, after you have seen the screen following your last action. Look at the next screenshot, verify, then report.")); log({ reportRejected: true }); break; }
+            const r = args as ReportArgs;
+            messages.push(toolResult(call, "OK"));
+            log({ report: r });
+            return finish(r.status === "done" ? "done" : "failed", r.summary ?? "");
+          }
+          case "note": {
+            const text = String(args.text ?? "").trim().slice(0, 300);
+            if (text) facts.push(text);
+            messages.push(toolResult(call, text ? `Noted (${facts.length} notes).` : "Empty note ignored."));
+            log({ note: text });
+            break;
+          }
+          case "calc": {
+            const out = calculate(args.expression);
+            messages.push(toolResult(call, out));
+            log({ calc: args.expression, result: out });
+            break;
+          }
+          case "computer": {
+            if (args.action === "zoom") {
+              const zr = await desktop.zoom(args.region);
+              if (zr) { zooms.push(zr); messages.push(toolResult(call, "Zoomed image attached below.")); }
+              else messages.push(toolResult(call, "Error: region must be [x, y, width, height] inside the screen."));
+              log({ action: args, result: zr ? "zoom" : "zoom error" });
+              break;
+            }
+            const result = await execute(desktop, args as ComputerAction, abort.signal);
+            // Between batched actions, let the app repaint so the next click is not swallowed by a closing menu/dropdown.
+            const isLast = call === reply.toolCalls[reply.toolCalls.length - 1];
+            let text = result.text;
+            if (result.isAction && !isLast && text === "OK") { const changed = await desktop.settle(true); if (!changed) text = "OK (screen did not change)"; }
+            messages.push(toolResult(call, text));
+            log({ action: args, result: text });
+            actionLog.push(`${args.action ?? "?"}${args.coordinate ? ` [${args.coordinate}]` : ""}${args.text ? ` "${String(args.text).slice(0, 40)}"` : ""} → ${text}`);
+            needsScreenshot = true; lastWasAction = result.isAction;
+            break;
+          }
+          default:
+            messages.push(toolResult(call, `Unknown tool ${call.function.name}`));
         }
-        const result = await execute(desktop, args as ComputerAction, abort.signal);
-        // Between batched actions, let the app repaint so the next click is not swallowed by a closing menu/dropdown.
-        const isLast = call === reply.toolCalls[reply.toolCalls.length - 1];
-        let text = result.text;
-        if (result.isAction && !isLast && text === "OK") { const changed = await desktop.settle(true); if (!changed) text = "OK (screen did not change)"; }
-        messages.push(toolResult(call, text));
-        log({ action: args, result: text });
-        actionLog.push(`${args.action ?? "?"}${args.coordinate ? ` [${args.coordinate}]` : ""}${args.text ? ` "${String(args.text).slice(0, 40)}"` : ""} → ${text}`);
-        needsScreenshot = true; lastWasAction = result.isAction;
       }
 
-      if (needsScreenshot) {
+      if (needsScreenshot || zooms.length || hasActions) {
         shot = await desktop.screenshot({ afterAction: lastWasAction });
         writeFileSync(`${logDir}/step-${String(steps).padStart(2, "0")}.png`, shot.png);
         const left = Math.max(0, Math.round((deadlineMs - (Date.now() - t0)) / 1000));
@@ -139,7 +192,12 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
         const budget = steps >= maxSteps - 25 || left <= 75
           ? ` Budget warning: ${maxSteps - steps} turns and ${left}s left. If you are not clearly making progress, verify what you have done and call report (status "failed" if the task is not complete, naming what you found).`
           : "";
-        messages.push({ role: "user", content: [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}${budget}` }, image(shot.png)] });
+        const content: Extract<ChatMessage, { role: "user" }>["content"] = [{ type: "text", text: `Screen after your actions (step ${steps}, ${left}s left).${note}${budget}${factsBlock()}` }, image(shot.png)];
+        for (const z of zooms) content.push({ type: "text", text: "Zoomed region:" }, image(z));
+        messages.push({ role: "user", content });
+      } else {
+        // Only notes/calc this turn: no new screen, but keep the facts visible.
+        messages.push({ role: "user", content: `Continue.${factsBlock()}` });
       }
     }
   } catch (e: any) {
@@ -190,7 +248,7 @@ function pruneImages(messages: ChatMessage[], keep: number) {
   }
 }
 
-/** Enforce the reporting contract: no secrets; no 'respuesta:' on failure; a single 'respuesta:' line on success. */
+/** Enforce the reporting contract: no secrets; no 'respuesta:' on failure; a single 'respuesta:' line on success; numbers without thousands separators. */
 export function sanitizeSummary(summary: string, status: "done" | "failed", secrets: string[]): string {
   let s = (summary ?? "").trim();
   for (const sec of secrets) s = s.split(sec).join("[oculto]");
@@ -198,6 +256,11 @@ export function sanitizeSummary(summary: string, status: "done" | "failed", secr
   const lines = s.split("\n");
   const answerIdx = lines.map((l, i) => (/^\s*respuesta\s*:/i.test(l) ? i : -1)).filter((i) => i >= 0);
   if (status === "failed") return lines.filter((_, i) => !answerIdx.includes(i)).join("\n").trim();
-  if (answerIdx.length > 1) return lines.filter((_, i) => !answerIdx.slice(1).includes(i)).join("\n").trim();
-  return s;
+  if (answerIdx.length > 1) { const keepIdx = answerIdx[0]; for (const i of answerIdx.slice(1)) lines[i] = ""; answerIdx.length = 1; answerIdx[0] = keepIdx; }
+  if (answerIdx.length === 1) {
+    // "respuesta: $ 1.250.000" → "respuesta: 1250000": the evaluator parses the first number on the line.
+    const i = answerIdx[0];
+    lines[i] = lines[i].replace(/^(\s*respuesta\s*:\s*)(.*)$/i, (_m, head: string, rest: string) => head + rest.replace(/\$\s*/g, "").replace(/(\d)[.,](?=\d{3}(\D|$))/g, "$1"));
+  }
+  return lines.filter((l, i) => !(l === "" && i > 0 && answerIdx.length && i !== answerIdx[0] && lines[i] === "")).join("\n").trim();
 }

@@ -113,6 +113,18 @@ export class Desktop {
     return { png, width: this.width, height: this.height, waitMs: s.waitMs, changed: s.changed };
   }
 
+  /** Enlarged crop of the current framebuffer (×2, capped at 1280 px wide) so the model can read small text. */
+  async zoom(region: unknown): Promise<Buffer | null> {
+    if (!Array.isArray(region) || region.length !== 4 || !region.every((v) => Number.isFinite(v))) return null;
+    let [x, y, w, h] = region.map((v) => Math.round(Number(v)));
+    x = Math.max(0, Math.min(this.width - 1, x)); y = Math.max(0, Math.min(this.height - 1, y));
+    w = Math.max(20, Math.min(this.width - x, w)); h = Math.max(10, Math.min(this.height - y, h));
+    const rgba = this.fb.toRgba();
+    const scale = Math.min(2, 1280 / w);
+    return sharp(Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength), { raw: { width: this.width, height: this.height, channels: 4 } })
+      .extract({ left: x, top: y, width: w, height: h }).resize(Math.round(w * scale), Math.round(h * scale), { kernel: "lanczos3" }).png().toBuffer();
+  }
+
   private assertInside(x: number, y: number) {
     if (this.closed) throw new Error("desktop connection closed");
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= this.width || y >= this.height) throw new Error(`coordinate out of screen: ${x},${y} (screen is ${this.width}x${this.height})`);

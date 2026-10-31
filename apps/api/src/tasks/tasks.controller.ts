@@ -10,11 +10,11 @@ export class TasksController {
 
   /** POST /tasks → {"task_id": "..."} in < 2 s. */
   @Post()
-  create(@Body() body: unknown, @Headers("x-received-at") receivedAtHeader?: string): { task_id: string } {
+  create(@Body() body: unknown, @Headers("x-received-at") receivedAtHeader?: string, @Headers("x-key-profile") keyProfile?: string): { task_id: string } {
     // When a front door (the Worker) received the task earlier, the deadline counts from that moment.
     const receivedAt = Number(receivedAtHeader);
     const valid = Number.isFinite(receivedAt) && receivedAt > 0 && receivedAt <= Date.now() && Date.now() - receivedAt < 600_000;
-    return this.tasks.submit(validate(body), valid ? receivedAt : undefined);
+    return this.tasks.submit(validate(body), valid ? receivedAt : undefined, keyProfile === "dev" ? "dev" : "default");
   }
 
   /** GET /tasks/:id → {"estado": "...", "resumen": "..."} */

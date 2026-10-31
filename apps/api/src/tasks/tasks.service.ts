@@ -6,7 +6,7 @@ import type { TaskRecord, TaskRequest, TaskStatusResponse } from "@operador/shar
 import { ConfigService } from "../config.service.js";
 import { TasksRepository } from "./tasks.repository.js";
 
-interface Queued { id: string; req: TaskRequest; receivedAt: number; }
+interface Queued { id: string; req: TaskRequest; receivedAt: number; keyProfile: "default" | "dev"; }
 
 /** Host of the desktop URL (password and path are irrelevant for exclusivity). */
 function desktopKey(url: string): string {
@@ -29,10 +29,10 @@ export class TasksService implements OnModuleDestroy {
   }
 
   /** Must return in well under 2 s: only persists and enqueues. */
-  submit(req: TaskRequest, receivedAt: number = Date.now()): { task_id: string } {
+  submit(req: TaskRequest, receivedAt: number = Date.now(), keyProfile: "default" | "dev" = "default"): { task_id: string } {
     const id = randomUUID();
     this.repo.create({ id, tarea: req.tarea, desktopUrl: req.escritorio.url });
-    this.queue.push({ id, req, receivedAt });
+    this.queue.push({ id, req, receivedAt, keyProfile });
     this.log.log(`task ${id} queued (${this.queue.length} waiting, ${this.running} running)`);
     setImmediate(() => this.pump());
     return { task_id: id };
@@ -63,18 +63,19 @@ export class TasksService implements OnModuleDestroy {
     }
   }
 
-  private async execute({ id, req, receivedAt }: Queued) {
+  private async execute({ id, req, receivedAt, keyProfile }: Queued) {
+    const apiKey = keyProfile === "dev" && this.config.openRouterApiKeyDev ? this.config.openRouterApiKeyDev : this.config.openRouterApiKey;
     // The deadline counts from the moment the evaluator posted the task, not from when we picked it up.
     const remaining = this.config.taskDeadlineMs - (Date.now() - receivedAt);
     if (remaining < 15_000) {
       this.repo.finish(id, "fallida", "No se completó la tarea dentro del tiempo límite; no se hicieron cambios.", { steps: 0, costUsd: 0, reason: "queue_timeout" });
       return;
     }
-    this.log.log(`task ${id} started (${Math.round(remaining / 1000)}s budget)`);
+    this.log.log(`task ${id} started (${Math.round(remaining / 1000)}s budget, key profile ${keyProfile})`);
     const result = await runTask({
       task: req.tarea,
       desktop: { url: req.escritorio.url, password: req.escritorio.password },
-      model: { apiKey: this.config.openRouterApiKey, model: this.config.model },
+      model: { apiKey, model: this.config.model },
       notes: this.notes,
       deadlineMs: remaining,
       maxCostUsd: this.config.maxCostPerTaskUsd,

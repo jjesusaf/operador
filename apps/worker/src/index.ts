@@ -9,6 +9,7 @@ export interface Env {
   DB: D1Database;
   TEAM_TOKEN: string;
   OPENROUTER_API_KEY: string;
+  OPENROUTER_API_KEY_DEV?: string;
   OPENROUTER_MODEL: string;
   TEAM_NAME: string;
   PUBLIC_URL: string;
@@ -47,6 +48,7 @@ export class OperatorContainer extends Container<Env> {
     return {
       NODE_ENV: "production", PORT: String(PORT), DATA_DIR: "/data",
       TEAM_TOKEN: this.env.TEAM_TOKEN, OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY,
+      ...(this.env.OPENROUTER_API_KEY_DEV ? { OPENROUTER_API_KEY_DEV: this.env.OPENROUTER_API_KEY_DEV } : {}),
       OPENROUTER_MODEL: this.env.OPENROUTER_MODEL, TEAM_NAME: this.env.TEAM_NAME,
       NOTES_URL: this.env.PUBLIC_URL, // the agent reads/writes its notebook through this Worker
     };
@@ -73,9 +75,9 @@ export class OperatorContainer extends Container<Env> {
   }
 
   /** Hands the task to the container; returns the container's own task id. */
-  async forward(req: TaskRequest, authorization: string, receivedAt: number): Promise<string> {
+  async forward(req: TaskRequest, authorization: string, receivedAt: number, keyProfile = "default"): Promise<string> {
     await this.warm();
-    const res = await this.containerFetch(`http://container/tasks`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization, "X-Received-At": String(receivedAt) }, body: JSON.stringify(req) }, PORT);
+    const res = await this.containerFetch(`http://container/tasks`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization, "X-Received-At": String(receivedAt), "X-Key-Profile": keyProfile }, body: JSON.stringify(req) }, PORT);
     if (!res.ok) throw new Error(`container answered HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const { task_id } = await res.json() as { task_id: string };
     return task_id;
@@ -143,9 +145,10 @@ app.post("/tasks", async (c) => {
 
   const req: TaskRequest = { tarea, escritorio: { url, password } };
   const auth = c.get("authorization"), db = c.env.DB, container = getContainer(c.env.OPERATOR);
+  const keyProfile = c.req.header("x-key-profile") === "dev" ? "dev" : "default"; // our harness only; the evaluator never sends it
   c.executionCtx.waitUntil((async () => {
     try {
-      const containerTaskId = await container.forward(req, auth, now);
+      const containerTaskId = await container.forward(req, auth, now, keyProfile);
       await db.prepare("UPDATE tasks SET container_task_id = ?, updated_at = ? WHERE id = ?").bind(containerTaskId, Date.now(), id).run();
     } catch (e: any) {
       const msg = String(e?.message ?? e);

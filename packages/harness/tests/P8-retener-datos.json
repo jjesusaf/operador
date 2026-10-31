@@ -1,0 +1,9 @@
+{
+  "id": "P8",
+  "nivel": "regular",
+  "instruccion": "Dime el NIT del cliente Almacén Díaz y el NIT de Abarrotes Gomez S.A.S., en ese orden.",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "870317958; 825016886",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

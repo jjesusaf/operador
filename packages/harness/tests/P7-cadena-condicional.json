@@ -1,0 +1,10 @@
+{
+  "id": "P7",
+  "nivel": "dificil",
+  "instruccion": "Busca el cliente con NIT 870317958. Si su teléfono termina en 7877, cámbiale la ciudad a Cali; si no, no cambies nada y dime cuál es su teléfono.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    { "entidad": "clientes", "id": "CL-0111", "campo": "ciudad", "accion": "update", "valor": "Cali" }
+  ],
+  "lista_blanca": []
+}

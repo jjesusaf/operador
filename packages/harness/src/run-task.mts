@@ -25,7 +25,8 @@ interface Outcome { status: "done" | "failed"; summary: string; steps: number; c
 let result: Outcome;
 if (via) {
   const t0 = Date.now();
-  const headers = { Authorization: `Bearer ${env("TEAM_TOKEN")}`, "Content-Type": "application/json" };
+  // --dev-key makes the deployed service bill our own OpenRouter key (X-Key-Profile: dev) instead of the event's.
+  const headers: Record<string, string> = { Authorization: `Bearer ${env("TEAM_TOKEN")}`, "Content-Type": "application/json", ...(process.argv.includes("--dev-key") ? { "X-Key-Profile": "dev" } : {}) };
   const post = await fetch(`${via}/tasks`, { method: "POST", headers, body: JSON.stringify({ tarea: test.instruccion, escritorio: { url: env("DESKTOP_WSS"), password: env("DESKTOP_PASSWORD") } }) });
   const postMs = Date.now() - t0;
   const { task_id } = await post.json() as { task_id: string };
@@ -42,7 +43,7 @@ if (via) {
   result = await runTask({
     task: test.instruccion,
     desktop: { url: env("DESKTOP_WSS"), password: env("DESKTOP_PASSWORD") },
-    model: { apiKey: env("OPENROUTER_API_KEY"), model: env("OPENROUTER_MODEL") },
+    model: { apiKey: process.env.OPENROUTER_API_KEY_DEV || env("OPENROUTER_API_KEY"), model: env("OPENROUTER_MODEL") }, // local runs prefer our own key
     logDir: `runs/${test.id}-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}`,
     secrets: [token, env("TEAM_TOKEN")],
     onStep: (s) => console.log(`  step ${s.step} · ${(s.elapsedMs / 1000).toFixed(1)}s · model ${s.modelMs} ms · $${s.cost.toFixed(4)} · ${s.calls.join(", ") || "(text)"}`),

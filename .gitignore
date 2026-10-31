@@ -9,3 +9,4 @@ spikes/out/
 dist/
 data/
 .turbo/
+packages/harness/runs/

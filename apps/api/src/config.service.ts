@@ -10,6 +10,8 @@ function required(name: string): string {
 export class ConfigService {
   readonly teamToken = required("TEAM_TOKEN");
   readonly openRouterApiKey = required("OPENROUTER_API_KEY");
+  /** Optional second key (our own credits) selected per task with `X-Key-Profile: dev`; the evaluator never sends it. */
+  readonly openRouterApiKeyDev = process.env.OPENROUTER_API_KEY_DEV ?? "";
   readonly model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-5.5";
   readonly dataDir = process.env.DATA_DIR ?? "data";
   readonly teamName = process.env.TEAM_NAME ?? "operador";

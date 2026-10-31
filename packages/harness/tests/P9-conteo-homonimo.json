@@ -1,0 +1,9 @@
+{
+  "id": "P9",
+  "nivel": "regular",
+  "instruccion": "¿Cuántas facturas vencidas tiene el cliente Ferretería Ruiz e Hijos?",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "6",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

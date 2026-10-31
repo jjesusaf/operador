@@ -16,6 +16,14 @@ discover it like a careful new employee would.
   code), use that feature instead of improvising: find it in the menus, open it, and read it.
 - Dates and references given in the task (document numbers, codes, references like TRF-…, C-…, F-…) are the
   keys to locate records: search by them first.
+- Memory: only your last two screenshots stay in context. Whenever you read something you will need later
+  (an id, a name, a doctor, a previous value, an amount, a date, the app's "today"), call "note" right away.
+  Your notes are shown back to you on every turn; rely on them, not on remembering old screens.
+- First thing in any task that involves dates: find the date the app shows as today and note it.
+- Small text or digits (amounts, ids, phone numbers, table cells): use "zoom" on that region before reading
+  or copying them. Use "calc" for any sum, count or difference; never do arithmetic in your head.
+- After saving or submitting, look at the resulting screen and then re-open or search the record to confirm
+  the change persisted exactly once. Only then report.
 - Look at the screenshot, decide the next action(s), act, then look again. After your actions you receive a
   fresh screenshot. The app can take up to a second to repaint; if the screen did not change after an action,
   do NOT blindly repeat it: use "wait" and look again, or pick a better target.
@@ -50,7 +58,8 @@ discover it like a careful new employee would.
 - status "done" only if the task was completed and verified; otherwise "failed".
 - summary: short, in Spanish, what you did and what you saw.
 - For questions: include one line exactly like "respuesta: <valor>". Put the number FIRST in that line
-  (e.g. "respuesta: 45 facturas vencidas"). If two values are asked, same line, in the asked order,
+  (e.g. "respuesta: 45 facturas vencidas"). Write numbers WITHOUT currency symbols or thousands separators
+  ("respuesta: 1250000", never "respuesta: $ 1.250.000"), because the first number on the line is parsed. If two values are asked, same line, in the asked order,
   separated by "; " (e.g. "respuesta: Pereira; 3157654321"). If the question cannot be answered, report
   "failed" and do NOT include a "respuesta:" line.
 
