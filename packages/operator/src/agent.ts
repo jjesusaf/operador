@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runTask(o: RunOptions): Promise<RunResult> {
   const t0 = Date.now();
-  const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 60, maxCost = o.maxCostUsd ?? 1.5, keep = o.keepScreenshots ?? 3;
+  const deadlineMs = o.deadlineMs ?? 270_000, maxSteps = o.maxSteps ?? 60, maxCost = o.maxCostUsd ?? 1.5, keep = o.keepScreenshots ?? 2;
   const logDir = o.logDir ?? `runs/${new Date().toISOString().replace(/[:.]/g, "-")}`;
   mkdirSync(logDir, { recursive: true });
   const log = (entry: Record<string, unknown>) => appendFileSync(`${logDir}/log.jsonl`, JSON.stringify({ t: Date.now() - t0, ...entry }) + "\n");
@@ -54,7 +54,9 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
 
   try {
     desktop = await Desktop.connect(o.desktop.url, o.desktop.password);
-    const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(desktop.width, desktop.height) }];
+    // The system prompt (and the tool definitions before it) is identical on every turn: mark it cacheable
+    // so Anthropic's prompt cache (through OpenRouter) stops charging for it after the first turn.
+    const messages: ChatMessage[] = [{ role: "system", content: [{ type: "text", text: systemPrompt(desktop.width, desktop.height), cache_control: { type: "ephemeral" } }] }];
     let shot = await desktop.screenshot();
     writeFileSync(`${logDir}/step-00.png`, shot.png);
     if (o.notes) {
@@ -97,8 +99,9 @@ export async function runTask(o: RunOptions): Promise<RunResult> {
       const reply = await chat(messages, o.model, abort.signal);
       cost += reply.cost;
       messages.push(reply.message);
+      if (reply.text) actionLog.push(`[plan/thought] ${reply.text.slice(0, 200)}`);
       const names = reply.toolCalls.map((c) => { try { const a = JSON.parse(c.function.arguments); return c.function.name === "computer" ? a.action : c.function.name; } catch { return c.function.name; } });
-      log({ step: steps, modelMs: reply.latencyMs, cost: reply.cost, promptTokens: reply.promptTokens, calls: names, text: reply.text.slice(0, 300) });
+      log({ step: steps, modelMs: reply.latencyMs, cost: reply.cost, promptTokens: reply.promptTokens, cachedTokens: reply.cachedTokens, calls: names, text: reply.text.slice(0, 300) });
       o.onStep?.({ step: steps, elapsedMs: Date.now() - t0, modelMs: reply.latencyMs, cost: reply.cost, calls: names });
 
       if (reply.toolCalls.length === 0) {

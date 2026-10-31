@@ -1,0 +1,10 @@
+{
+  "id": "P5",
+  "nivel": "dificil",
+  "instruccion": "Si el cliente Abarrotes Gomez S.A.S. (NIT 825016886) está en Bogotá, cambia su teléfono a 3001112233. Si está en otra ciudad, no cambies nada y dime en cuál está.",
+  "estado_esperado": "terminada",
+  "diff_esperado": [
+    { "entidad": "clientes", "id": "CL-0065", "campo": "telefono", "accion": "update", "valor": "3001112233" }
+  ],
+  "lista_blanca": []
+}

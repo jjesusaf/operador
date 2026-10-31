@@ -1,0 +1,9 @@
+{
+  "id": "P6",
+  "nivel": "dificil",
+  "instruccion": "Registra al cliente Abarrotes Gomez S.A.S., NIT 825016886, teléfono 3356668816, ciudad Bogotá. Si ya existe un cliente con ese NIT, no lo crees y dime su código.",
+  "estado_esperado": "terminada",
+  "respuesta_esperada": "CL-0065",
+  "diff_esperado": [],
+  "lista_blanca": []
+}

@@ -49,14 +49,14 @@ export const tools = [
 ] as const;
 
 export type ChatMessage =
-  | { role: "system"; content: string }
+  | { role: "system"; content: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> }
   | { role: "user"; content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
 export interface ToolCall { id: string; type: "function"; function: { name: string; arguments: string } }
 
-export interface ModelReply { message: { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }; toolCalls: ToolCall[]; text: string; cost: number; promptTokens: number; completionTokens: number; latencyMs: number; }
+export interface ModelReply { message: { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }; toolCalls: ToolCall[]; text: string; cost: number; promptTokens: number; completionTokens: number; cachedTokens: number; latencyMs: number; }
 
 export interface ModelOptions { apiKey: string; model: string; maxTokens?: number; }
 
@@ -76,6 +76,7 @@ export async function chat(messages: ChatMessage[], opts: ModelOptions, signal?:
     message: { role: "assistant", content: message.content ?? null, tool_calls: toolCalls.length ? toolCalls : undefined },
     toolCalls, text: typeof message.content === "string" ? message.content : "",
     cost: Number(body.usage?.cost ?? 0), promptTokens: body.usage?.prompt_tokens ?? 0, completionTokens: body.usage?.completion_tokens ?? 0,
+    cachedTokens: body.usage?.prompt_tokens_details?.cached_tokens ?? 0,
     latencyMs: Date.now() - t0,
   };
 }
