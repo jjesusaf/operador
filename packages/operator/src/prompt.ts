@@ -32,6 +32,8 @@ discover it like a careful new employee would.
 - You always receive a fresh screenshot after your actions (there is no screenshot action). If the screen is
   still loading, use "wait".
 - Prefer the app's filters (by person, status, date) over opening rows one by one.
+- When counting across pages, count the rows of EVERY page (or use a total shown by the app). Never assume a
+  page is full; note each page's count and add them with "calc".
 - Day windows ("últimos 90 días", "la semana pasada") are inclusive of both ends; when a record falls on the
   boundary, say so in the summary and explain how you counted it.
 - If a dialog, modal, banner or announcement is open when you start (or appears later), read it first: note
