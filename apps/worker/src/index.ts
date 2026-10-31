@@ -86,8 +86,10 @@ export class OperatorContainer extends Container<Env> {
     return this.containerFetch(`http://container${path}`, { headers: { Authorization: authorization } }, PORT);
   }
 
-  async liveStatus(containerTaskId: string, authorization: string): Promise<TaskStatusResponse | null> {
+  /** Live state from the container; `lost` means the container no longer knows the task (it was restarted). */
+  async liveStatus(containerTaskId: string, authorization: string): Promise<TaskStatusResponse | { lost: true } | null> {
     const res = await this.containerFetch(`http://container/tasks/${containerTaskId}`, { headers: { Authorization: authorization } }, PORT);
+    if (res.status === 404) return { lost: true };
     return res.ok ? (await res.json() as TaskStatusResponse) : null;
   }
 }
@@ -163,7 +165,11 @@ app.get("/tasks/:id", async (c) => {
   if (estado === "en_curso" && row.container_task_id) {
     try {
       const live = await getContainer(c.env.OPERATOR).liveStatus(row.container_task_id, c.get("authorization"));
-      if (live && (live.estado !== estado || live.resumen !== resumen)) {
+      if (live && "lost" in live) {
+        // The container was restarted mid-task: report it honestly instead of leaving it "en_curso".
+        estado = "fallida"; resumen = "El servicio se reinició antes de terminar la tarea; no se completó.";
+        await c.env.DB.prepare("UPDATE tasks SET estado = ?, resumen = ?, forward_error = 'container_restarted', updated_at = ? WHERE id = ?").bind(estado, resumen, Date.now(), id).run();
+      } else if (live && (live.estado !== estado || live.resumen !== resumen)) {
         estado = live.estado; resumen = live.resumen;
         await c.env.DB.prepare("UPDATE tasks SET estado = ?, resumen = ?, updated_at = ? WHERE id = ?").bind(estado, resumen, Date.now(), id).run();
       }
